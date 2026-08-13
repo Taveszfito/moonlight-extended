@@ -224,6 +224,11 @@ private:
     void clSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlags, uint8_t typeLeft, uint8_t typeRight, uint8_t *left, uint8_t *right);
 
     static
+    void clDualSenseAudio(uint16_t controllerNumber, uint16_t sequence,
+                          uint16_t frameCount, uint8_t channels, uint8_t flags,
+                          uint8_t *pcm, uint16_t pcmLength);
+
+    static
     int arInit(int audioConfiguration,
                const POPUS_MULTISTREAM_CONFIGURATION opusConfig,
                void* arContext, int arFlags);

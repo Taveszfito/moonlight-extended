@@ -40,6 +40,7 @@
 #include <QGuiApplication>
 #include <QCursor>
 #include <QScreen>
+#include "streaming/audio/dualsenseaudio.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QQuickOpenGLUtils>
@@ -60,7 +61,8 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
     Session::clRumbleTriggers,
     Session::clSetMotionEventState,
     Session::clSetControllerLED,
-    Session::clSetAdaptiveTriggers
+    Session::clSetAdaptiveTriggers,
+    Session::clDualSenseAudio
 };
 
 Session* Session::s_ActiveSession;
@@ -265,6 +267,13 @@ void Session::clSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlag
     DualSenseOutputReport *state = (DualSenseOutputReport *) SDL_malloc(sizeof(DualSenseOutputReport));
     SDL_zero(*state);
     state->validFlag0 = (eventFlags & DS_EFFECT_RIGHT_TRIGGER) | (eventFlags & DS_EFFECT_LEFT_TRIGGER);
+    // Apollo Extended carries the five-bit player LED mask in left[0] when
+    // event flag 0x80 is set. Keep it in the native DualSense fields; the BT
+    // path consumes these explicitly and the USB path remains unchanged.
+    if ((eventFlags & 0x80) != 0 && left != nullptr) {
+        state->validFlag2 = 0x01;
+        state->playerLeds = left[0] & 0x1f;
+    }
     state->rightTriggerEffectType = typeRight;
     SDL_memcpy(state->rightTriggerEffect, right, sizeof(state->rightTriggerEffect));
     state->leftTriggerEffectType = typeLeft;
@@ -272,6 +281,14 @@ void Session::clSetAdaptiveTriggers(uint16_t controllerNumber, uint8_t eventFlag
 
     setControllerLEDEvent.user.data2 = (void *) state;
     SDL_PushEvent(&setControllerLEDEvent);
+}
+
+void Session::clDualSenseAudio(uint16_t controllerNumber, uint16_t sequence,
+                               uint16_t frameCount, uint8_t channels, uint8_t flags,
+                               uint8_t *pcm, uint16_t pcmLength)
+{
+    DualSenseAudioRenderer::instance().receive(controllerNumber, sequence, frameCount,
+                                                channels, flags, pcm, pcmLength);
 }
 
 
@@ -586,10 +603,12 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AudioSampleCount(0),
       m_DropAudioEndTime(0)
 {
+    DualSenseAudioRenderer::instance().configure(m_Preferences->dualSenseAudioMode);
 }
 
 Session::~Session()
 {
+    DualSenseAudioRenderer::instance().close();
     // NB: This may not get destroyed for a long time! Don't put any non-trivial cleanup here.
     // Use Session::exec() or DeferredSessionCleanupTask instead.
 

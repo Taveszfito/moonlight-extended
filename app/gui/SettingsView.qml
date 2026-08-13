@@ -932,6 +932,22 @@ Flickable {
                     }
                 }
 
+                Label {
+                    width: parent.width
+                    text: qsTr("DualSense audio and HD haptics (Apollo Extended)")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: dualSenseAudioModeComboBox
+                    width: parent.width
+                    model: [qsTr("Automatic"), qsTr("USB controller speaker"),
+                            qsTr("USB controller headset"), qsTr("HD haptics only"), qsTr("Off")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.dualSenseAudioMode)
+                    onActivated: StreamingPreferences.dualSenseAudioMode = currentIndex
+                }
+
 
                 CheckBox {
                     id: audioPcCheck
@@ -978,6 +994,21 @@ Flickable {
             Column {
                 anchors.fill: parent
                 spacing: 5
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Host controller emulation (Apollo Extended)")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: controllerEmulationComboBox
+                    width: parent.width
+                    model: [qsTr("Automatic"), qsTr("Xbox 360"), qsTr("DualShock 4"), qsTr("DualSense")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.controllerEmulationMode)
+                    onActivated: StreamingPreferences.controllerEmulationMode = currentIndex
+                }
 
                 CheckBox {
                     id: optimizeGameSettingsCheck

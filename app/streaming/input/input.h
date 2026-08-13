@@ -225,6 +225,8 @@ private:
     QString m_OldIgnoreDevicesExcept;
     QStringList m_IgnoreDeviceGuids;
     StreamingPreferences::CaptureSysKeysMode m_CaptureSystemKeysMode;
+    StreamingPreferences::ControllerEmulationMode m_ControllerEmulationMode;
+    StreamingPreferences::DualSenseAudioMode m_DualSenseAudioMode;
     int m_MouseCursorCapturedVisibilityState;
 
     struct {

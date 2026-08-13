@@ -3,8 +3,10 @@
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "settings/mappingmanager.h"
+#include "streaming/audio/dualsenseaudio.h"
 
 #include <QtMath>
+#include <cstring>
 
 // How long the Start button must be pressed to toggle mouse emulation
 #define MOUSE_EMULATION_LONG_PRESS_TIME 750
@@ -22,6 +24,75 @@
 #define ML_HAPTIC_GC_RUMBLE         (1U << 16)
 #define ML_HAPTIC_SIMPLE_RUMBLE     (1U << 17)
 #define ML_HAPTIC_GC_TRIGGER_RUMBLE (1U << 18)
+
+// Apollo Extended controller-generation request encoded in the legacy
+// controller capability field. Older hosts safely ignore these upper bits.
+#define APOLLO_EXTENDED_EMULATION_MAGIC 0xEC00
+#define APOLLO_EXTENDED_EMULATION_XBOX  1
+#define APOLLO_EXTENDED_EMULATION_DS4   2
+#define APOLLO_EXTENDED_EMULATION_DS5   3
+
+static bool sendDualSenseEffect(SDL_GameController* controller, const uint8_t* effect)
+{
+    return SDL_GameControllerSendEffect(controller, effect, sizeof(DualSenseOutputReport)) == 0;
+}
+
+static void activateDualSenseAudio(SDL_GameController* controller,
+                                   StreamingPreferences::DualSenseAudioMode mode)
+{
+    if (mode == StreamingPreferences::DSAM_OFF) {
+        return;
+    }
+
+    static_assert(sizeof(DualSenseOutputReport) > 43,
+                  "DualSense output report must contain the DSP wake fields");
+
+    // SDL takes the native USB payload without report ID 0x02. Consequently,
+    // these offsets are one less than the corresponding raw HID report offsets.
+    const bool headset = mode == StreamingPreferences::DSAM_USB_HEADSET;
+    uint8_t route[sizeof(DualSenseOutputReport)] = {};
+    route[0] = 0xf3;
+    route[4] = 0xff;
+    if (!headset) {
+        route[5] = 0xff;
+        route[7] = 0xff;
+    }
+
+    bool routeOk = sendDualSenseEffect(controller, route);
+    if (!headset) {
+        SDL_Delay(40);
+        routeOk = sendDualSenseEffect(controller, route) && routeOk;
+    }
+
+    SDL_Delay(35);
+    uint8_t musicRumble[sizeof(DualSenseOutputReport)] = {};
+    musicRumble[0] = 0xe0;
+    musicRumble[4] = 0x7f;
+    musicRumble[5] = headset ? 0x00 : 0xff;
+    musicRumble[6] = 0x40;
+    musicRumble[7] = headset ? 0x00 : 0x30;
+    const bool musicOk = sendDualSenseEffect(controller, musicRumble);
+
+    SDL_Delay(35);
+    uint8_t wake[sizeof(DualSenseOutputReport)] = {};
+    wake[1] = 0x15;
+    wake[38] = 0x03;
+    wake[41] = 0x02;
+    wake[43] = 0x24;
+    const bool wakeOk = sendDualSenseEffect(controller, wake);
+
+    if (!headset) {
+        SDL_Delay(35);
+        routeOk = sendDualSenseEffect(controller, route) && routeOk;
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "DualSense audio activation: mode=%d route=%s music-rumble=%s dsp-wake=%s",
+                static_cast<int>(mode),
+                routeOk ? "ok" : "failed",
+                musicOk ? "ok" : "failed",
+                wakeOk ? "ok" : "failed");
+}
 
 const int SdlInputHandler::k_ButtonMap[] = {
     A_FLAG, B_FLAG, X_FLAG, Y_FLAG,
@@ -285,6 +356,12 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
 
     if (event->state == SDL_PRESSED) {
         state->buttons |= k_ButtonMap[event->button];
+
+        if (event->button == SDL_CONTROLLER_BUTTON_MISC1 &&
+                SDL_GameControllerGetType(state->controller) == SDL_CONTROLLER_TYPE_PS5 &&
+                DualSenseAudioRenderer::instance().isBluetooth()) {
+            DualSenseAudioRenderer::instance().toggleBluetoothMicLed();
+        }
 
         if (event->button == SDL_CONTROLLER_BUTTON_START) {
             state->lastStartDownTime = SDL_GetTicks();
@@ -623,6 +700,38 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
                     hapticCaps,
                     guidStr,
                     mapping != nullptr ? mapping : "<null>");
+
+        if (SDL_GameControllerGetType(state->controller) == SDL_CONTROLLER_TYPE_PS5) {
+            SDL_Joystick* joystick = SDL_GameControllerGetJoystick(state->controller);
+            const char* path = SDL_JoystickPath(joystick);
+            const bool bluetoothPath = path != nullptr &&
+                (std::strstr(path, "00001124-0000-1000-8000-00805f9b34fb") != nullptr ||
+                 std::strstr(path, "VID&0002054c") != nullptr);
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "DualSense transport classification: %s path=%s",
+                        bluetoothPath ? "Bluetooth" : "USB", path != nullptr ? path : "<null>");
+            DualSenseAudioRenderer::instance().setController(state->controller, bluetoothPath, path);
+            if (!bluetoothPath) {
+                activateDualSenseAudio(state->controller, m_DualSenseAudioMode);
+            }
+            const char* serial = SDL_GameControllerGetSerial(state->controller);
+            const uint16_t firmware = SDL_GameControllerGetFirmwareVersion(state->controller);
+
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "DualSense %d native HID ready: path=%s serial=%s firmware=0x%.4x "
+                        "touchpads=%d accel=%d gyro=%d battery=%d rumble=%d triggerRumble=%d led=%d",
+                        state->index,
+                        path != nullptr ? path : "<unavailable>",
+                        serial != nullptr ? serial : "<unavailable>",
+                        firmware,
+                        SDL_GameControllerGetNumTouchpads(state->controller),
+                        SDL_GameControllerHasSensor(state->controller, SDL_SENSOR_ACCEL),
+                        SDL_GameControllerHasSensor(state->controller, SDL_SENSOR_GYRO),
+                        SDL_JoystickCurrentPowerLevel(joystick),
+                        (hapticCaps & ML_HAPTIC_GC_RUMBLE) != 0,
+                        (hapticCaps & ML_HAPTIC_GC_TRIGGER_RUMBLE) != 0,
+                        SDL_GameControllerHasLED(state->controller));
+        }
         if (mapping != nullptr) {
             SDL_free((void*)mapping);
         }
@@ -713,6 +822,34 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
 #endif
             type == LI_CTYPE_PS;
 
+        int extendedMode = 0;
+        switch (m_ControllerEmulationMode) {
+        case StreamingPreferences::CEM_XBOX:
+            extendedMode = APOLLO_EXTENDED_EMULATION_XBOX;
+            break;
+        case StreamingPreferences::CEM_DUALSHOCK4:
+            extendedMode = APOLLO_EXTENDED_EMULATION_DS4;
+            break;
+        case StreamingPreferences::CEM_DUALSENSE:
+            extendedMode = APOLLO_EXTENDED_EMULATION_DS5;
+            break;
+        case StreamingPreferences::CEM_AUTO:
+            if (SDL_GameControllerGetType(state->controller) == SDL_CONTROLLER_TYPE_PS5) {
+                extendedMode = APOLLO_EXTENDED_EMULATION_DS5;
+            }
+            else if (type == LI_CTYPE_PS) {
+                extendedMode = APOLLO_EXTENDED_EMULATION_DS4;
+            }
+            else if (type == LI_CTYPE_XBOX) {
+                extendedMode = APOLLO_EXTENDED_EMULATION_XBOX;
+            }
+            break;
+        }
+
+        capabilities |= APOLLO_EXTENDED_EMULATION_MAGIC | (extendedMode << 8);
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Apollo Extended emulation request: controller=%d mode=%d capabilities=0x%x",
+                    state->index, extendedMode, capabilities);
         LiSendControllerArrivalEvent(state->index, m_GamepadMask, type, supportedButtonFlags, capabilities);
 #else
 
@@ -802,7 +939,13 @@ void SdlInputHandler::rumble(unsigned short controllerNumber, unsigned short low
 
 #if SDL_VERSION_ATLEAST(2, 0, 9)
     if (m_GamepadState[controllerNumber].controller != nullptr) {
-        SDL_GameControllerRumble(m_GamepadState[controllerNumber].controller, lowFreqMotor, highFreqMotor, 30000);
+        if (SDL_GameControllerGetType(m_GamepadState[controllerNumber].controller) == SDL_CONTROLLER_TYPE_PS5 &&
+                DualSenseAudioRenderer::instance().isBluetooth()) {
+            DualSenseAudioRenderer::instance().setBluetoothRumble(lowFreqMotor, highFreqMotor);
+        }
+        else {
+            SDL_GameControllerRumble(m_GamepadState[controllerNumber].controller, lowFreqMotor, highFreqMotor, 30000);
+        }
     }
 #else
     // Check if the controller supports haptics (and if the controller exists at all)
@@ -900,7 +1043,13 @@ void SdlInputHandler::setControllerLED(uint16_t controllerNumber, uint8_t r, uin
 
 #if SDL_VERSION_ATLEAST(2, 0, 14)
     if (m_GamepadState[controllerNumber].controller != nullptr) {
-        SDL_GameControllerSetLED(m_GamepadState[controllerNumber].controller, r, g, b);
+        if (SDL_GameControllerGetType(m_GamepadState[controllerNumber].controller) == SDL_CONTROLLER_TYPE_PS5 &&
+                DualSenseAudioRenderer::instance().isBluetooth()) {
+            DualSenseAudioRenderer::instance().setBluetoothLed(r, g, b);
+        }
+        else {
+            SDL_GameControllerSetLED(m_GamepadState[controllerNumber].controller, r, g, b);
+        }
     }
 #endif
 }
@@ -909,12 +1058,22 @@ void SdlInputHandler::setAdaptiveTriggers(uint16_t controllerNumber, DualSenseOu
 
 #if SDL_VERSION_ATLEAST(2, 0, 16)
         // Make sure the controller number is within our supported count
-    if (controllerNumber <= MAX_GAMEPADS &&
+    if (controllerNumber < MAX_GAMEPADS &&
         // and we have a valid controller
         m_GamepadState[controllerNumber].controller != nullptr &&
         // and it's a PS5 controller
         SDL_GameControllerGetType(m_GamepadState[controllerNumber].controller) == SDL_CONTROLLER_TYPE_PS5) {
-        SDL_GameControllerSendEffect(m_GamepadState[controllerNumber].controller, report, sizeof(*report));
+        if (DualSenseAudioRenderer::instance().isBluetooth()) {
+            DualSenseAudioRenderer::instance().setBluetoothTriggers(report);
+        }
+        else {
+            // Player LEDs are transported by Artemis only on Bluetooth for
+            // now. Preserve the pre-existing wired output byte-for-byte.
+            DualSenseOutputReport wiredReport = *report;
+            wiredReport.validFlag2 = 0;
+            wiredReport.playerLeds = 0;
+            SDL_GameControllerSendEffect(m_GamepadState[controllerNumber].controller, &wiredReport, sizeof(wiredReport));
+        }
     }
 #endif
 

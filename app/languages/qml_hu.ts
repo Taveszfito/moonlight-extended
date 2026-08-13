@@ -1192,6 +1192,41 @@
         <source>Automatically detect blocked connections (Recommended)</source>
         <translation>Automatikusan észleli a blokkolt kapcsolatokat (Ajánlott)</translation>
     </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="937"/>
+        <source>DualSense audio and HD haptics (Apollo Extended)</source>
+        <translation>DualSense hang &#233;s HD haptika (Apollo Extended)</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="947"/>
+        <source>USB controller speaker</source>
+        <translation>USB-s kontrollerhangsz&#243;r&#243;</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="948"/>
+        <source>USB controller headset</source>
+        <translation>USB-s kontroller-headset</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="949"/>
+        <source>HD haptics only</source>
+        <translation>Csak HD haptika</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1012"/>
+        <source>Host controller emulation (Apollo Extended)</source>
+        <translation>Hostoldali kontrolleremul&#225;ci&#243; (Apollo Extended)</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1023"/>
+        <source>DualShock 4</source>
+        <translation>DualShock 4</translation>
+    </message>
+    <message>
+        <location filename="../gui/SettingsView.qml" line="1024"/>
+        <source>DualSense</source>
+        <translation>DualSense</translation>
+    </message>
 </context>
 <context>
     <name>StreamSegue</name>

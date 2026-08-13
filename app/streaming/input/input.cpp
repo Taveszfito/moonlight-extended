@@ -22,6 +22,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_FakeMouseCaptureActive(false),
       m_KeyboardCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
+      m_ControllerEmulationMode(prefs.controllerEmulationMode),
+      m_DualSenseAudioMode(prefs.dualSenseAudioMode),
       m_MouseCursorCapturedVisibilityState(SDL_DISABLE),
       m_LongPressTimer(0),
       m_StreamWidth(streamWidth),
@@ -71,6 +73,12 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     // trigger a click on the host if the Moonlight window is not focused. In
     // relative mode, the click event will trigger the mouse to be recaptured.
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+
+    // Use SDL's native HIDAPI driver for DualSense on both USB and Bluetooth. The
+    // generic Windows joystick paths expose basic controls but can omit touchpad,
+    // motion sensors, LEDs, battery state, and advanced output reports.
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5, "1");
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_PLAYER_LED, "1");
 
     // Enabling extended input reports allows rumble to function on Bluetooth PS4/PS5
     // controllers, but breaks DirectInput applications. We will enable it because

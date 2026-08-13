@@ -2,6 +2,8 @@
 
 #include <Limelight.h>
 
+#include <string>
+
 SdlAudioRenderer::SdlAudioRenderer()
     : m_AudioDevice(0),
       m_AudioBuffer(nullptr)
@@ -37,7 +39,20 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
                   opusConfig->channelCount *
                   getAudioBufferSampleSize();
 
-    m_AudioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    // Snapshot the Windows default endpoint before any DualSense extended
+    // stream opens its dedicated four-channel endpoint. Passing NULL here can
+    // follow a later default-device change and move Moonlight's main audio to
+    // the controller. An explicit name keeps the stream on its startup route.
+    std::string startupDeviceName;
+    if (SDL_GetNumAudioDevices(0) > 0) {
+        const char* defaultDevice = SDL_GetAudioDeviceName(0, 0);
+        if (defaultDevice != nullptr) {
+            startupDeviceName = defaultDevice;
+        }
+    }
+
+    m_AudioDevice = SDL_OpenAudioDevice(startupDeviceName.empty() ? NULL : startupDeviceName.c_str(),
+                                        0, &want, &have, 0);
     if (m_AudioDevice == 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "Failed to open audio device: %s",
@@ -65,6 +80,10 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "SDL audio driver: %s",
                 SDL_GetCurrentAudioDriver());
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Main stream audio pinned to startup device: %s",
+                startupDeviceName.empty() ? "<system default>" : startupDeviceName.c_str());
 
     // Start playback
     SDL_PauseAudioDevice(m_AudioDevice, 0);

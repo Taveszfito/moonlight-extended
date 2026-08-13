@@ -23,6 +23,8 @@
 #define SER_HOSTAUDIO "hostaudio"
 #define SER_MULTICONT "multicontroller"
 #define SER_AUDIOCFG "audiocfg"
+#define SER_CONTROLLEREMULATION "controlleremulation"
+#define SER_DUALSENSEAUDIOMODE "dualsenseaudiomode"
 #define SER_VIDEOCFG "videocfg"
 #define SER_HDR "hdr"
 #define SER_YUV444 "yuv444"
@@ -156,6 +158,10 @@ void StreamingPreferences::reload()
                                                          static_cast<int>(CaptureSysKeysMode::CSK_OFF)).toInt());
     audioConfig = static_cast<AudioConfig>(settings.value(SER_AUDIOCFG,
                                                   static_cast<int>(AudioConfig::AC_STEREO)).toInt());
+    controllerEmulationMode = static_cast<ControllerEmulationMode>(settings.value(SER_CONTROLLEREMULATION,
+                                                  static_cast<int>(ControllerEmulationMode::CEM_AUTO)).toInt());
+    dualSenseAudioMode = static_cast<DualSenseAudioMode>(settings.value(SER_DUALSENSEAUDIOMODE,
+                                                  static_cast<int>(DualSenseAudioMode::DSAM_AUTO)).toInt());
     videoCodecConfig = static_cast<VideoCodecConfig>(settings.value(SER_VIDEOCFG,
                                                   static_cast<int>(VideoCodecConfig::VCC_AUTO)).toInt());
     videoDecoderSelection = static_cast<VideoDecoderSelection>(settings.value(SER_VIDEODEC,
@@ -346,6 +352,8 @@ void StreamingPreferences::save()
     settings.setValue(SER_DETECTNETBLOCKING, detectNetworkBlocking);
     settings.setValue(SER_SHOWPERFOVERLAY, showPerformanceOverlay);
     settings.setValue(SER_AUDIOCFG, static_cast<int>(audioConfig));
+    settings.setValue(SER_CONTROLLEREMULATION, static_cast<int>(controllerEmulationMode));
+    settings.setValue(SER_DUALSENSEAUDIOMODE, static_cast<int>(dualSenseAudioMode));
     settings.setValue(SER_HDR, enableHdr);
     settings.setValue(SER_YUV444, enableYUV444);
     settings.setValue(SER_VIDEOCFG, static_cast<int>(videoCodecConfig));

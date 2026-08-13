@@ -26,6 +26,25 @@ public:
     };
     Q_ENUM(AudioConfig)
 
+    enum ControllerEmulationMode
+    {
+        CEM_AUTO,
+        CEM_XBOX,
+        CEM_DUALSHOCK4,
+        CEM_DUALSENSE
+    };
+    Q_ENUM(ControllerEmulationMode)
+
+    enum DualSenseAudioMode
+    {
+        DSAM_AUTO,
+        DSAM_USB_SPEAKER,
+        DSAM_USB_HEADSET,
+        DSAM_HAPTICS_ONLY,
+        DSAM_OFF
+    };
+    Q_ENUM(DualSenseAudioMode)
+
     enum VideoCodecConfig
     {
         VCC_AUTO,
@@ -141,6 +160,8 @@ public:
     Q_PROPERTY(bool detectNetworkBlocking MEMBER detectNetworkBlocking NOTIFY detectNetworkBlockingChanged)
     Q_PROPERTY(bool showPerformanceOverlay MEMBER showPerformanceOverlay NOTIFY showPerformanceOverlayChanged)
     Q_PROPERTY(AudioConfig audioConfig MEMBER audioConfig NOTIFY audioConfigChanged)
+    Q_PROPERTY(ControllerEmulationMode controllerEmulationMode MEMBER controllerEmulationMode NOTIFY controllerEmulationModeChanged)
+    Q_PROPERTY(DualSenseAudioMode dualSenseAudioMode MEMBER dualSenseAudioMode NOTIFY dualSenseAudioModeChanged)
     Q_PROPERTY(VideoCodecConfig videoCodecConfig MEMBER videoCodecConfig NOTIFY videoCodecConfigChanged)
     Q_PROPERTY(bool enableHdr MEMBER enableHdr NOTIFY enableHdrChanged)
     Q_PROPERTY(bool enableYUV444 MEMBER enableYUV444 NOTIFY enableYUV444Changed)
@@ -190,6 +211,8 @@ public:
     bool keepAwake;
     int packetSize;
     AudioConfig audioConfig;
+    ControllerEmulationMode controllerEmulationMode;
+    DualSenseAudioMode dualSenseAudioMode;
     VideoCodecConfig videoCodecConfig;
     bool enableHdr;
     bool enableYUV444;
@@ -216,6 +239,8 @@ signals:
     void absoluteMouseModeChanged();
     void absoluteTouchModeChanged();
     void audioConfigChanged();
+    void controllerEmulationModeChanged();
+    void dualSenseAudioModeChanged();
     void videoCodecConfigChanged();
     void enableHdrChanged();
     void enableYUV444Changed();
