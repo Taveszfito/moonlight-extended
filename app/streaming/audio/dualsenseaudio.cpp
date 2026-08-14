@@ -236,28 +236,50 @@ bool DualSenseAudioRenderer::sendBluetoothAudioLocked()
 {
     if (!m_BluetoothWakeSent && !sendBluetoothWakeLocked()) return false;
     const bool includeSpeaker = m_Mode != StreamingPreferences::DSAM_HAPTICS_ONLY;
-    const size_t reportSize = includeSpeaker ? 334 : 206;
-    std::array<uint8_t, 334> report = {};
-    report[0] = includeSpeaker ? 0x35 : 0x33;
+    // Report 0x36 is the native combined DualSense BT media container. It must
+    // include a complete 63-byte controller state before the haptics and Opus
+    // sub-packets. Sending media at offset 13 (as the old 0x35 implementation
+    // did) makes the controller interpret PCM as trigger and LED state.
+    constexpr size_t reportSize = 398;
+    std::array<uint8_t, reportSize> report = {};
+    report[0] = 0x36;
     report[1] = (m_BluetoothSequence++ & 0x0f) << 4;
     report[2] = 0x91; report[3] = 7; report[4] = 0xfe;
     std::fill(report.begin() + 5, report.begin() + 10, 96);
     report[10] = m_BluetoothPacketCounter++;
+
+    std::array<uint8_t, 63> state = {};
+    const bool compatibleRumble = m_BluetoothLeftRumble != 0 || m_BluetoothRightRumble != 0;
+    state[0] = compatibleRumble ? 0xff : 0xfc;
+    state[1] = 0xd5;
+    state[2] = m_BluetoothRightRumble;
+    state[3] = m_BluetoothLeftRumble;
+    state[4] = 0x00;
+    state[5] = 0x64;
+    state[6] = 0xff;
+    state[7] = 0x09;
+    state[8] = m_BluetoothMicLed ? 1 : 0;
+    std::copy(m_BluetoothRightTrigger.begin(), m_BluetoothRightTrigger.end(), state.begin() + 10);
+    std::copy(m_BluetoothLeftTrigger.begin(), m_BluetoothLeftTrigger.end(), state.begin() + 21);
+    state[36] = 0x0a;
+    state[37] = 0x03;
+    state[38] = 0x03;
+    state[41] = 0x02;
+    state[43] = (m_BluetoothPlayerLeds & 0x1f) | 0x20;
+    state[44] = m_BluetoothRed;
+    state[45] = m_BluetoothGreen;
+    state[46] = m_BluetoothBlue;
+
+    report[11] = 0x90; report[12] = 63;
+    std::copy(state.begin(), state.end(), report.begin() + 13);
+    report[76] = 0x92; report[77] = 64;
+    std::memcpy(report.data() + 78, m_HapticReport.data(), m_HapticReport.size());
+    report[142] = 0x93; report[143] = 200;
     if (includeSpeaker) {
-        // Sony's measured combined container always places haptics first and
-        // the Opus speaker frame second. Reversing these sub-packets produces
-        // valid CRCs but neither DSP endpoint consumes the payload.
-        report[11] = 0x92; report[12] = 64;
-        std::memcpy(report.data() + 13, m_HapticReport.data(), m_HapticReport.size());
-        report[77] = 0x93; report[78] = 200;
-        std::copy(m_SpeakerOpus.begin(), m_SpeakerOpus.end(), report.begin() + 79);
+        std::copy(m_SpeakerOpus.begin(), m_SpeakerOpus.end(), report.begin() + 144);
     }
-    else {
-        report[11] = 0x92; report[12] = 64;
-        std::memcpy(report.data() + 13, m_HapticReport.data(), m_HapticReport.size());
-    }
-    const uint32_t crc = bluetoothCrc(report.data(), reportSize - 4);
-    for (int i = 0; i < 4; i++) report[reportSize - 4 + i] = (crc >> (i * 8)) & 0xff;
+    const uint32_t crc = bluetoothCrc(report.data(), 394);
+    for (int i = 0; i < 4; i++) report[394 + i] = (crc >> (i * 8)) & 0xff;
     return sendArtemisBluetoothReport(m_BluetoothController, report.data(), reportSize);
 }
 
