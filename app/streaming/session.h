@@ -125,6 +125,9 @@ public:
 
     void setShouldExit(bool quitHostApp = false);
 
+    void toggleQuickMenu();
+    bool isQuickMenuCombo(int buttons) const;
+
 signals:
     void stageStarting(QString stage);
 
@@ -168,6 +171,11 @@ private:
     void toggleFullscreen();
 
     void notifyMouseEmulationMode(bool enabled);
+
+    void renderQuickMenu();
+    bool handleQuickMenuEvent(const SDL_Event& event);
+    void activateQuickMenuItem();
+    void sendMonitorSwitch(int monitorIndex);
 
     void updateOptimalWindowDisplayMode();
 
@@ -269,6 +277,14 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
+    bool m_QuickMenuVisible;
+    bool m_QuickMenuEditMode;
+    bool m_QuickMenuMonitorSubmenu;
+    int m_QuickMenuSelection;
+    QStringList m_QuickMenuOrder;
+    QStringList m_QuickMenuEditOriginalOrder;
+    int m_QuickMenuModifierButton;
+    int m_QuickMenuActivatorButton;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

@@ -18,13 +18,8 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
     switch (combo) {
     case KeyComboQuit:
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Detected quit key combo");
-
-        // Push a quit event to the main loop
-        SDL_Event event;
-        event.type = SDL_QUIT;
-        event.quit.timestamp = SDL_GetTicks();
-        SDL_PushEvent(&event);
+                    "Detected Artemis quick menu key combo");
+        Session::get()->toggleQuickMenu();
         break;
 
     case KeyComboUngrabInput:

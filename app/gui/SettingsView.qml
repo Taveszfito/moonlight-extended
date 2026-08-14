@@ -932,23 +932,6 @@ Flickable {
                     }
                 }
 
-                Label {
-                    width: parent.width
-                    text: qsTr("DualSense audio and HD haptics (Apollo Extended)")
-                    font.pointSize: 12
-                    wrapMode: Text.Wrap
-                }
-
-                AutoResizingComboBox {
-                    id: dualSenseAudioModeComboBox
-                    width: parent.width
-                    model: [qsTr("Automatic"), qsTr("USB controller speaker"),
-                            qsTr("USB controller headset"), qsTr("HD haptics only"), qsTr("Off")]
-                    Component.onCompleted: currentIndex = Number(StreamingPreferences.dualSenseAudioMode)
-                    onActivated: StreamingPreferences.dualSenseAudioMode = currentIndex
-                }
-
-
                 CheckBox {
                     id: audioPcCheck
                     width: parent.width
@@ -995,21 +978,6 @@ Flickable {
                 anchors.fill: parent
                 spacing: 5
 
-                Label {
-                    width: parent.width
-                    text: qsTr("Host controller emulation (Apollo Extended)")
-                    font.pointSize: 12
-                    wrapMode: Text.Wrap
-                }
-
-                AutoResizingComboBox {
-                    id: controllerEmulationComboBox
-                    width: parent.width
-                    model: [qsTr("Automatic"), qsTr("Xbox 360"), qsTr("DualShock 4"), qsTr("DualSense")]
-                    Component.onCompleted: currentIndex = Number(StreamingPreferences.controllerEmulationMode)
-                    onActivated: StreamingPreferences.controllerEmulationMode = currentIndex
-                }
-
                 CheckBox {
                     id: optimizeGameSettingsCheck
                     width: parent.width
@@ -1035,6 +1003,103 @@ Flickable {
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("This will close the app or game you are streaming when you end your stream. You will lose any unsaved progress!")
+                }
+            }
+        }
+
+        GroupBox {
+            id: extendedSettingsGroupBox
+            width: (parent.width - (parent.leftPadding + parent.rightPadding))
+            padding: 12
+            title: "<font color=\"skyblue\">" + qsTr("Extended Settings") + "</font>"
+            font.pointSize: 12
+
+            Column {
+                anchors.fill: parent
+                spacing: 8
+
+                Label {
+                    width: parent.width
+                    text: qsTr("DualSense audio and HD haptics (Apollo Extended)")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: dualSenseAudioModeComboBox
+                    width: parent.width
+                    model: [qsTr("Automatic"), qsTr("USB controller speaker"),
+                            qsTr("USB controller headset"), qsTr("HD haptics only"), qsTr("Off")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.dualSenseAudioMode)
+                    onActivated: StreamingPreferences.dualSenseAudioMode = currentIndex
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Host controller emulation (Apollo Extended)")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: controllerEmulationComboBox
+                    width: parent.width
+                    model: [qsTr("Automatic"), qsTr("Xbox 360"), qsTr("DualShock 4"), qsTr("DualSense")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.controllerEmulationMode)
+                    onActivated: StreamingPreferences.controllerEmulationMode = currentIndex
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Quick Menu")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Keyboard shortcut: Ctrl+Alt+Shift+Q")
+                    color: "lightgray"
+                    font.pointSize: 10
+                    wrapMode: Text.Wrap
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Shortcut modifier")
+                    font.pointSize: 11
+                }
+
+                AutoResizingComboBox {
+                    id: quickMenuModifierComboBox
+                    width: parent.width
+                    model: [qsTr("Share / View"), qsTr("Home / PS / Guide"),
+                            qsTr("Options / Menu"), qsTr("L1 / LB"), qsTr("R1 / RB"), qsTr("Touchpad click")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.quickMenuModifierButton)
+                    onActivated: StreamingPreferences.quickMenuModifierButton = currentIndex
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Shortcut activator")
+                    font.pointSize: 11
+                }
+
+                AutoResizingComboBox {
+                    id: quickMenuActivatorComboBox
+                    width: parent.width
+                    model: [qsTr("Share / View"), qsTr("Home / PS / Guide"),
+                            qsTr("Options / Menu"), qsTr("L1 / LB"), qsTr("R1 / RB"), qsTr("Touchpad click")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.quickMenuActivatorButton)
+                    onActivated: StreamingPreferences.quickMenuActivatorButton = currentIndex
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Shortcut changes take effect when the next stream starts.")
+                    color: "lightgray"
+                    font.pointSize: 10
+                    wrapMode: Text.Wrap
                 }
             }
         }

@@ -15,6 +15,9 @@ OverlayManager::OverlayManager() :
     m_Overlays[OverlayType::OverlayStatusUpdate].color = {0xCC, 0x00, 0x00, 0xFF};
     m_Overlays[OverlayType::OverlayStatusUpdate].fontSize = 36;
 
+    m_Overlays[OverlayType::OverlayQuickMenu].color = {0xFF, 0xFF, 0xFF, 0xFF};
+    m_Overlays[OverlayType::OverlayQuickMenu].fontSize = 30;
+
     // While TTF will usually not be initialized here, it is valid for that not to
     // be the case, since Session destruction is deferred and could overlap with
     // the lifetime of a new Session object.
@@ -79,6 +82,93 @@ SDL_Surface* OverlayManager::getUpdatedOverlaySurface(OverlayType type)
     // If a new surface is available, return it. If not, return nullptr.
     // Caller must free the surface on success.
     return (SDL_Surface*)SDL_AtomicSetPtr((void**)&m_Overlays[type].surface, nullptr);
+}
+
+void OverlayManager::updateQuickMenuSurface(int width, int height, const QStringList& labels,
+                                            int selectedIndex, bool editMode, bool monitorSubmenu)
+{
+    if (width <= 0 || height <= 0 || m_FontData.isEmpty()) {
+        return;
+    }
+
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
+    if (surface == nullptr) {
+        return;
+    }
+    SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_BLEND);
+    SDL_FillRect(surface, nullptr, SDL_MapRGBA(surface->format, 8, 10, 16, 205));
+
+    const int scale = qMax(1, qMin(width, height) / 720);
+    const int margin = 42 * scale;
+    const int gap = 18 * scale;
+    const int headerHeight = 112 * scale;
+    const int columns = width >= 900 ? 3 : 2;
+    const int rows = qMax(1, (labels.size() + columns - 1) / columns);
+    const int cardWidth = (width - margin * 2 - gap * (columns - 1)) / columns;
+    const int cardHeight = qMin(190 * scale,
+                                (height - headerHeight - margin * 2 - gap * (rows - 1)) / rows);
+
+    TTF_Font* titleFont = TTF_OpenFontRW(SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
+                                         1, 34 * scale);
+    TTF_Font* cardFont = TTF_OpenFontRW(SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
+                                        1, 24 * scale);
+    TTF_Font* hintFont = TTF_OpenFontRW(SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
+                                        1, 16 * scale);
+    auto drawCentered = [surface](TTF_Font* font, const QString& text, SDL_Color color,
+                                  const SDL_Rect& box) {
+        if (font == nullptr) return;
+        SDL_Surface* rendered = TTF_RenderUTF8_Blended_Wrapped(font, text.toUtf8().constData(),
+                                                               color, qMax(1, box.w - 20));
+        if (rendered == nullptr) return;
+        SDL_Rect dst = {box.x + (box.w - rendered->w) / 2,
+                        box.y + (box.h - rendered->h) / 2,
+                        rendered->w, rendered->h};
+        SDL_BlitSurface(rendered, nullptr, surface, &dst);
+        SDL_FreeSurface(rendered);
+    };
+
+    SDL_Rect titleRect = {margin, margin / 2, width - margin * 2, 60 * scale};
+    drawCentered(titleFont, monitorSubmenu ? QStringLiteral("MONITOR SWITCH") :
+                 (editMode ? QStringLiteral("QUICK MENU  -  CARD HELD") : QStringLiteral("QUICK MENU")),
+                 {255, 255, 255, 255}, titleRect);
+    SDL_Rect hintRect = {margin, titleRect.y + titleRect.h, width - margin * 2, 40 * scale};
+    drawCentered(hintFont,
+                 monitorSubmenu ? QStringLiteral("Select monitor 1-4 with D-pad and Cross   Circle: back") :
+                 (editMode ? QStringLiteral("D-pad: move held card   Square: drop and save   Circle: cancel")
+                           : QStringLiteral("D-pad: navigate   Cross: select   Square: pick up card   Circle: back")),
+                 {190, 194, 205, 255}, hintRect);
+
+    const int gridY = margin + headerHeight;
+    for (int i = 0; i < labels.size(); i++) {
+        const int row = i / columns;
+        const int col = i % columns;
+        SDL_Rect card = {margin + col * (cardWidth + gap), gridY + row * (cardHeight + gap),
+                         cardWidth, cardHeight};
+        const bool selected = i == selectedIndex;
+        SDL_FillRect(surface, &card, SDL_MapRGBA(surface->format,
+                     selected ? 116 : 38, selected ? 72 : 42, selected ? 166 : 54, 242));
+        if (selected) {
+            const int border = 4 * scale;
+            SDL_Rect top = {card.x, card.y, card.w, border};
+            SDL_Rect bottom = {card.x, card.y + card.h - border, card.w, border};
+            SDL_Rect left = {card.x, card.y, border, card.h};
+            SDL_Rect right = {card.x + card.w - border, card.y, border, card.h};
+            Uint32 accent = SDL_MapRGBA(surface->format, 218, 145, 255, 255);
+            SDL_FillRect(surface, &top, accent); SDL_FillRect(surface, &bottom, accent);
+            SDL_FillRect(surface, &left, accent); SDL_FillRect(surface, &right, accent);
+        }
+        drawCentered(cardFont, labels.at(i), {255, 255, 255, 255}, card);
+    }
+
+    if (titleFont) TTF_CloseFont(titleFont);
+    if (cardFont) TTF_CloseFont(cardFont);
+    if (hintFont) TTF_CloseFont(hintFont);
+
+    SDL_Surface* oldSurface = (SDL_Surface*)SDL_AtomicSetPtr(
+        (void**)&m_Overlays[OverlayType::OverlayQuickMenu].surface, surface);
+    m_Overlays[OverlayType::OverlayQuickMenu].enabled = true;
+    if (m_Renderer != nullptr) m_Renderer->notifyOverlayUpdated(OverlayType::OverlayQuickMenu);
+    if (oldSurface != nullptr) SDL_FreeSurface(oldSurface);
 }
 
 void OverlayManager::setOverlayTextUpdated(OverlayType type)

@@ -440,6 +440,24 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
         }
     }
 
+    // Share/Back + Home/PS opens the touch-friendly Artemis quick menu by default.
+    // Both buttons are settings-backed so the same binding model can be reused by
+    // later Artemis controller features such as gyro aim.
+    const bool quickMenuComboDown = Session::get()->isQuickMenuCombo(state->buttons);
+    if (quickMenuComboDown && !state->quickMenuComboLatched) {
+        state->quickMenuComboLatched = true;
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Detected quick menu gamepad combo");
+        // The menu consumes subsequent controller events. Clear our cached state now
+        // so a face-button release cannot expose the still-cached shortcut and reopen it.
+        state->buttons = 0;
+        Session::get()->toggleQuickMenu();
+        LiSendMultiControllerEvent(state->index, m_GamepadMask, 0, 0, 0, 0, 0, 0, 0);
+        return;
+    }
+    else if (!quickMenuComboDown) {
+        state->quickMenuComboLatched = false;
+    }
+
     // Handle Start+Select+L1+R1 as a gamepad quit combo
     if (state->buttons == (PLAY_FLAG | BACK_FLAG | LB_FLAG | RB_FLAG) && qgetenv("NO_GAMEPAD_QUIT") != "1") {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

@@ -162,6 +162,8 @@ public:
     Q_PROPERTY(AudioConfig audioConfig MEMBER audioConfig NOTIFY audioConfigChanged)
     Q_PROPERTY(ControllerEmulationMode controllerEmulationMode MEMBER controllerEmulationMode NOTIFY controllerEmulationModeChanged)
     Q_PROPERTY(DualSenseAudioMode dualSenseAudioMode MEMBER dualSenseAudioMode NOTIFY dualSenseAudioModeChanged)
+    Q_PROPERTY(int quickMenuModifierButton MEMBER quickMenuModifierButton NOTIFY quickMenuShortcutChanged)
+    Q_PROPERTY(int quickMenuActivatorButton MEMBER quickMenuActivatorButton NOTIFY quickMenuShortcutChanged)
     Q_PROPERTY(VideoCodecConfig videoCodecConfig MEMBER videoCodecConfig NOTIFY videoCodecConfigChanged)
     Q_PROPERTY(bool enableHdr MEMBER enableHdr NOTIFY enableHdrChanged)
     Q_PROPERTY(bool enableYUV444 MEMBER enableYUV444 NOTIFY enableYUV444Changed)
@@ -213,6 +215,8 @@ public:
     AudioConfig audioConfig;
     ControllerEmulationMode controllerEmulationMode;
     DualSenseAudioMode dualSenseAudioMode;
+    int quickMenuModifierButton;
+    int quickMenuActivatorButton;
     VideoCodecConfig videoCodecConfig;
     bool enableHdr;
     bool enableYUV444;
@@ -241,6 +245,7 @@ signals:
     void audioConfigChanged();
     void controllerEmulationModeChanged();
     void dualSenseAudioModeChanged();
+    void quickMenuShortcutChanged();
     void videoCodecConfigChanged();
     void enableHdrChanged();
     void enableYUV444Changed();

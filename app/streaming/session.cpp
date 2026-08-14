@@ -40,6 +40,7 @@
 #include <QGuiApplication>
 #include <QCursor>
 #include <QScreen>
+#include <QSettings>
 #include "streaming/audio/dualsenseaudio.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -596,6 +597,12 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
+      m_QuickMenuVisible(false),
+      m_QuickMenuEditMode(false),
+      m_QuickMenuMonitorSubmenu(false),
+      m_QuickMenuSelection(0),
+      m_QuickMenuModifierButton(BACK_FLAG),
+      m_QuickMenuActivatorButton(SPECIAL_FLAG),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -604,6 +611,231 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_DropAudioEndTime(0)
 {
     DualSenseAudioRenderer::instance().configure(m_Preferences->dualSenseAudioMode);
+
+    const QStringList defaults = {QStringLiteral("disconnect"), QStringLiteral("quit"),
+                                  QStringLiteral("monitor"), QStringLiteral("close")};
+    m_QuickMenuOrder = QSettings().value(QStringLiteral("artemis/quickMenuOrder"), defaults).toStringList();
+    m_QuickMenuOrder.removeAll(QStringLiteral("monitor_prev"));
+    m_QuickMenuOrder.removeAll(QStringLiteral("monitor_next"));
+    auto shortcutFlag = [](int selection) {
+        switch (selection) {
+        case 0: return BACK_FLAG;       // Share / View
+        case 1: return SPECIAL_FLAG;    // Home / PS / Guide
+        case 2: return PLAY_FLAG;       // Options / Menu
+        case 3: return LB_FLAG;
+        case 4: return RB_FLAG;
+        case 5: return TOUCHPAD_FLAG;
+        default: return 0;
+        }
+    };
+    m_QuickMenuModifierButton = shortcutFlag(m_Preferences->quickMenuModifierButton);
+    m_QuickMenuActivatorButton = shortcutFlag(m_Preferences->quickMenuActivatorButton);
+    for (const QString& id : defaults) {
+        if (!m_QuickMenuOrder.contains(id)) m_QuickMenuOrder.append(id);
+    }
+}
+
+bool Session::isQuickMenuCombo(int buttons) const
+{
+    const int shortcut = m_QuickMenuModifierButton | m_QuickMenuActivatorButton;
+    return shortcut != 0 && (buttons & shortcut) == shortcut;
+}
+
+void Session::renderQuickMenu()
+{
+    if (!m_QuickMenuVisible || m_Window == nullptr) return;
+
+    QStringList labels;
+    if (m_QuickMenuMonitorSubmenu) {
+        labels << tr("Monitor 1") << tr("Monitor 2") << tr("Monitor 3") << tr("Monitor 4");
+    }
+    else {
+        for (const QString& id : m_QuickMenuOrder) {
+            if (id == QStringLiteral("disconnect")) labels << tr("Disconnect");
+            else if (id == QStringLiteral("quit")) labels << tr("Quit Session");
+            else if (id == QStringLiteral("monitor")) labels << tr("Monitor Switch");
+            else if (id == QStringLiteral("close")) labels << tr("Close Menu");
+        }
+    }
+    int width, height;
+    SDL_GetWindowSize(m_Window, &width, &height);
+    m_QuickMenuSelection = qBound(0, m_QuickMenuSelection, qMax(0, labels.size() - 1));
+    m_OverlayManager.updateQuickMenuSurface(width, height, labels, m_QuickMenuSelection,
+                                            m_QuickMenuEditMode, m_QuickMenuMonitorSubmenu);
+}
+
+void Session::toggleQuickMenu()
+{
+    m_QuickMenuVisible = !m_QuickMenuVisible;
+    m_QuickMenuEditMode = false;
+    m_QuickMenuMonitorSubmenu = false;
+    if (m_QuickMenuVisible) {
+        m_InputHandler->notifyFocusLost();
+        m_InputHandler->setCaptureActive(false);
+        SDL_ShowCursor(SDL_ENABLE);
+        renderQuickMenu();
+    }
+    else {
+        m_OverlayManager.setOverlayState(Overlay::OverlayQuickMenu, false);
+        m_InputHandler->notifyFocusGained();
+        if (m_IsFullScreen || m_Preferences->absoluteMouseMode) {
+            m_InputHandler->setCaptureActive(true);
+        }
+    }
+}
+
+void Session::sendMonitorSwitch(int monitorIndex)
+{
+    const short key = 0x70 + qBound(0, monitorIndex, 3); // F1..F4
+    const char modifiers = MODIFIER_CTRL | MODIFIER_ALT | MODIFIER_SHIFT;
+    LiSendKeyboardEvent(0x8000 | key, KEY_ACTION_DOWN, modifiers);
+    LiSendKeyboardEvent(0x8000 | key, KEY_ACTION_UP, modifiers);
+}
+
+void Session::activateQuickMenuItem()
+{
+    if (m_QuickMenuMonitorSubmenu) {
+        sendMonitorSwitch(m_QuickMenuSelection);
+        m_QuickMenuMonitorSubmenu = false;
+        m_QuickMenuSelection = qMax(0, m_QuickMenuOrder.indexOf(QStringLiteral("monitor")));
+        renderQuickMenu();
+        return;
+    }
+
+    if (m_QuickMenuSelection < 0 || m_QuickMenuSelection >= m_QuickMenuOrder.size()) return;
+    const QString id = m_QuickMenuOrder.at(m_QuickMenuSelection);
+    if (id == QStringLiteral("disconnect")) {
+        m_QuickMenuVisible = false;
+        SDL_Event quit = {}; quit.type = SDL_QUIT; SDL_PushEvent(&quit);
+    }
+    else if (id == QStringLiteral("quit")) {
+        m_Preferences->quitAppAfter = true;
+        m_QuickMenuVisible = false;
+        SDL_Event quit = {}; quit.type = SDL_QUIT; SDL_PushEvent(&quit);
+    }
+    else if (id == QStringLiteral("monitor")) {
+        m_QuickMenuMonitorSubmenu = true;
+        m_QuickMenuSelection = 0;
+        renderQuickMenu();
+    }
+    else {
+        toggleQuickMenu();
+    }
+}
+
+bool Session::handleQuickMenuEvent(const SDL_Event& event)
+{
+    if (!m_QuickMenuVisible) return false;
+
+    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+        renderQuickMenu();
+        return false;
+    }
+
+    if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+        auto moveEditedCard = [this](int delta) {
+            if (!m_QuickMenuEditMode || m_QuickMenuOrder.size() < 2) return false;
+            const int target = qBound(0, m_QuickMenuSelection + delta,
+                                      m_QuickMenuOrder.size() - 1);
+            if (target != m_QuickMenuSelection) {
+                m_QuickMenuOrder.swapItemsAt(m_QuickMenuSelection, target);
+                m_QuickMenuSelection = target;
+                renderQuickMenu();
+            }
+            return true;
+        };
+        switch (event.cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+            if (moveEditedCard(-1)) return true;
+            m_QuickMenuSelection = (m_QuickMenuSelection + m_QuickMenuOrder.size() - 1) % m_QuickMenuOrder.size();
+            renderQuickMenu(); return true;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+            if (moveEditedCard(1)) return true;
+            m_QuickMenuSelection = (m_QuickMenuSelection + 1) % m_QuickMenuOrder.size();
+            renderQuickMenu(); return true;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:
+            if (moveEditedCard(-3)) return true;
+            m_QuickMenuSelection = qMax(0, m_QuickMenuSelection - 3);
+            renderQuickMenu(); return true;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+            if (moveEditedCard(3)) return true;
+            m_QuickMenuSelection = qMin(m_QuickMenuOrder.size() - 1, m_QuickMenuSelection + 3);
+            renderQuickMenu(); return true;
+        case SDL_CONTROLLER_BUTTON_X:
+            if (m_QuickMenuMonitorSubmenu) return true;
+            if (!m_QuickMenuEditMode) {
+                m_QuickMenuEditOriginalOrder = m_QuickMenuOrder;
+                m_QuickMenuEditMode = true;
+            }
+            else {
+                QSettings().setValue(QStringLiteral("artemis/quickMenuOrder"), m_QuickMenuOrder);
+                m_QuickMenuEditMode = false;
+            }
+            renderQuickMenu(); return true;
+        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+            moveEditedCard(event.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER ? -1 : 1);
+            return true;
+        case SDL_CONTROLLER_BUTTON_A:
+            if (!m_QuickMenuEditMode) activateQuickMenuItem();
+            return true;
+        case SDL_CONTROLLER_BUTTON_B:
+            if (m_QuickMenuEditMode) {
+                m_QuickMenuOrder = m_QuickMenuEditOriginalOrder;
+                m_QuickMenuEditMode = false;
+                renderQuickMenu();
+            }
+            else if (m_QuickMenuMonitorSubmenu) {
+                m_QuickMenuMonitorSubmenu = false;
+                m_QuickMenuSelection = qMax(0, m_QuickMenuOrder.indexOf(QStringLiteral("monitor")));
+                renderQuickMenu();
+            }
+            else toggleQuickMenu();
+            return true;
+        default: return true;
+        }
+    }
+
+    if (event.type == SDL_CONTROLLERBUTTONUP || event.type == SDL_CONTROLLERAXISMOTION ||
+            event.type == SDL_CONTROLLERSENSORUPDATE || event.type == SDL_CONTROLLERTOUCHPADDOWN ||
+            event.type == SDL_CONTROLLERTOUCHPADUP || event.type == SDL_CONTROLLERTOUCHPADMOTION) {
+        return true;
+    }
+
+    if (event.type == SDL_KEYDOWN) {
+        if (event.key.keysym.sym == SDLK_ESCAPE) toggleQuickMenu();
+        else if (event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) activateQuickMenuItem();
+        else if (event.key.keysym.sym == SDLK_LEFT) { m_QuickMenuSelection = qMax(0, m_QuickMenuSelection - 1); renderQuickMenu(); }
+        else if (event.key.keysym.sym == SDLK_RIGHT) { m_QuickMenuSelection = qMin(m_QuickMenuOrder.size() - 1, m_QuickMenuSelection + 1); renderQuickMenu(); }
+        else if (event.key.keysym.sym == SDLK_UP) { m_QuickMenuSelection = qMax(0, m_QuickMenuSelection - 3); renderQuickMenu(); }
+        else if (event.key.keysym.sym == SDLK_DOWN) { m_QuickMenuSelection = qMin(m_QuickMenuOrder.size() - 1, m_QuickMenuSelection + 3); renderQuickMenu(); }
+        return true;
+    }
+    if (event.type == SDL_KEYUP || event.type == SDL_MOUSEMOTION || event.type == SDL_FINGERMOTION) return true;
+
+    if (event.type == SDL_MOUSEBUTTONUP || event.type == SDL_FINGERUP) {
+        int width, height; SDL_GetWindowSize(m_Window, &width, &height);
+        const int x = event.type == SDL_FINGERUP ? int(event.tfinger.x * width) : event.button.x;
+        const int y = event.type == SDL_FINGERUP ? int(event.tfinger.y * height) : event.button.y;
+        const int scale = qMax(1, qMin(width, height) / 720);
+        const int margin = 42 * scale, gap = 18 * scale, header = 112 * scale;
+        const int columns = width >= 900 ? 3 : 2;
+        const int rows = qMax(1, (m_QuickMenuOrder.size() + columns - 1) / columns);
+        const int cardWidth = (width - margin * 2 - gap * (columns - 1)) / columns;
+        const int cardHeight = qMin(190 * scale, (height - header - margin * 2 - gap * (rows - 1)) / rows);
+        for (int i = 0; i < m_QuickMenuOrder.size(); i++) {
+            SDL_Rect card = {margin + (i % columns) * (cardWidth + gap),
+                             margin + header + (i / columns) * (cardHeight + gap), cardWidth, cardHeight};
+            if (x >= card.x && x < card.x + card.w && y >= card.y && y < card.y + card.h) {
+                m_QuickMenuSelection = i;
+                renderQuickMenu();
+                if (!m_QuickMenuEditMode) activateQuickMenuItem();
+                break;
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 Session::~Session()
@@ -2014,6 +2246,10 @@ void Session::exec()
             continue;
         }
 #endif
+        if (handleQuickMenuEvent(event)) {
+            presence.runCallbacks();
+            continue;
+        }
         switch (event.type) {
         case SDL_QUIT:
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #include "SDL_compat.h"
 #include <SDL_ttf.h>
@@ -10,6 +11,7 @@ namespace Overlay {
 enum OverlayType {
     OverlayDebug,
     OverlayStatusUpdate,
+    OverlayQuickMenu,
     OverlayMax
 };
 
@@ -36,6 +38,8 @@ public:
     SDL_Color getOverlayColor(OverlayType type);
     int getOverlayFontSize(OverlayType type);
     SDL_Surface* getUpdatedOverlaySurface(OverlayType type);
+    void updateQuickMenuSurface(int width, int height, const QStringList& labels,
+                                int selectedIndex, bool editMode, bool monitorSubmenu);
 
     void setOverlayRenderer(IOverlayRenderer* renderer);
 

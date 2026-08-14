@@ -25,6 +25,8 @@
 #define SER_AUDIOCFG "audiocfg"
 #define SER_CONTROLLEREMULATION "controlleremulation"
 #define SER_DUALSENSEAUDIOMODE "dualsenseaudiomode"
+#define SER_QUICKMENUMODIFIER "quickmenumodifier"
+#define SER_QUICKMENUACTIVATOR "quickmenuactivator"
 #define SER_VIDEOCFG "videocfg"
 #define SER_HDR "hdr"
 #define SER_YUV444 "yuv444"
@@ -162,6 +164,8 @@ void StreamingPreferences::reload()
                                                   static_cast<int>(ControllerEmulationMode::CEM_AUTO)).toInt());
     dualSenseAudioMode = static_cast<DualSenseAudioMode>(settings.value(SER_DUALSENSEAUDIOMODE,
                                                   static_cast<int>(DualSenseAudioMode::DSAM_AUTO)).toInt());
+    quickMenuModifierButton = settings.value(SER_QUICKMENUMODIFIER, 0).toInt();
+    quickMenuActivatorButton = settings.value(SER_QUICKMENUACTIVATOR, 1).toInt();
     videoCodecConfig = static_cast<VideoCodecConfig>(settings.value(SER_VIDEOCFG,
                                                   static_cast<int>(VideoCodecConfig::VCC_AUTO)).toInt());
     videoDecoderSelection = static_cast<VideoDecoderSelection>(settings.value(SER_VIDEODEC,
@@ -354,6 +358,8 @@ void StreamingPreferences::save()
     settings.setValue(SER_AUDIOCFG, static_cast<int>(audioConfig));
     settings.setValue(SER_CONTROLLEREMULATION, static_cast<int>(controllerEmulationMode));
     settings.setValue(SER_DUALSENSEAUDIOMODE, static_cast<int>(dualSenseAudioMode));
+    settings.setValue(SER_QUICKMENUMODIFIER, quickMenuModifierButton);
+    settings.setValue(SER_QUICKMENUACTIVATOR, quickMenuActivatorButton);
     settings.setValue(SER_HDR, enableHdr);
     settings.setValue(SER_YUV444, enableYUV444);
     settings.setValue(SER_VIDEOCFG, static_cast<int>(videoCodecConfig));

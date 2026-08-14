@@ -21,6 +21,7 @@ struct GamepadState {
 
     bool clickpadButtonEmulationEnabled;
     bool emulatedClickpadButtonDown;
+    bool quickMenuComboLatched;
 
 #if SDL_VERSION_ATLEAST(2, 0, 14)
     uint8_t gyroReportPeriodMs;
