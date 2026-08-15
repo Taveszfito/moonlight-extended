@@ -54,3 +54,9 @@ The matching host is available from the [Apollo Extended releases](https://githu
 Moonlight Extended is based on [Moonlight PC](https://github.com/moonlight-stream/moonlight-qt).
 
 DualSense support builds on [SDL](https://github.com/libsdl-org/SDL), with Extended changes maintained in the project's [SDL fork](https://github.com/Taveszfito/SDL). Streaming protocol changes are maintained in [moonlight-common-c](https://github.com/Taveszfito/moonlight-common-c).
+
+Upcoming updates for Dualsense controller: (USB and BT mode)
+
+-when jack is connected, windows volume is directed to controller (done in commit, missing from the current release)
+-controller or client microphone forwarding to host
+-mute button actually works
