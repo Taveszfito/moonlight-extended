@@ -59,6 +59,6 @@ DualSense support builds on [SDL](https://github.com/libsdl-org/SDL), with Exten
 
 ## Upcoming updates for Dualsense controller: (USB and BT mode)
 
--when jack is connected, windows volume is directed to controller (done in commit, missing from the current release)
--controller or client microphone forwarding to host
--mute button actually works
+- when jack is connected, windows volume is directed to controller (done in commit, missing from the current release)
+- controller or client microphone forwarding to host
+- mute button actually works
