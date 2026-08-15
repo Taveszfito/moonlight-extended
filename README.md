@@ -12,16 +12,31 @@ Use a DualSense directly on the Windows client without converting it to an Xbox 
 
 Currently supported features include:
 
-- Buttons, sticks, triggers, touchpad, and motion input
-- Adaptive triggers
-- Standard rumble and HD haptics
-- Controller speaker audio
-- Light bar, player LEDs, and microphone LED control
-- Wired USB and wireless Bluetooth operation
-- Selectable host controller emulation
-- Selectable DualSense audio and haptics mode
+* Buttons, sticks, triggers, touchpad, and motion input
+* Adaptive triggers
+* Standard rumble and HD haptics
+* Controller speaker audio
+* DualSense built-in microphone forwarding to the host
+* Global microphone mute using the DualSense microphone button, with microphone LED and on-screen status feedback
+* Automatic game audio switching to headphones connected through the DualSense 3.5 mm jack
+* Light bar, player LEDs, and microphone LED control
+* Wired USB and wireless Bluetooth operation
+* Selectable host controller emulation
+* Selectable DualSense audio and haptics mode
 
-> **Apollo Extended required:** Native DualSense host emulation, HD haptics, controller-speaker audio, and other Extended controller options require a compatible [Apollo Extended](https://github.com/Taveszfito/Apollo-Extended) host. Standard Sunshine and Apollo hosts remain usable for regular Moonlight streaming, but they cannot provide the complete Extended DualSense feature set.
+> **Apollo Extended required:** Native DualSense host emulation, HD haptics, controller-speaker audio, microphone forwarding, and other Extended controller options require a compatible [Apollo Extended](https://github.com/Taveszfito/Apollo-Extended) host. Standard Sunshine and Apollo hosts remain usable for regular Moonlight streaming, but they cannot provide the complete Extended DualSense feature set.
+
+---
+
+## 🎙️ Microphone Forwarding
+
+Moonlight Extended adds client-to-host microphone forwarding, allowing voice chat and other microphone input to be used during a remote streaming session.
+
+Any microphone available on the client PC can be selected and forwarded to the host, including the DualSense built-in microphone when a controller is connected.
+
+Microphone transmission can be muted directly on the client, preventing microphone audio from being sent to the host.
+
+> **Apollo Extended required:** Microphone forwarding is an Extended protocol feature and requires a compatible [Apollo Extended](https://github.com/Taveszfito/Apollo-Extended) host. Standard Sunshine and Apollo hosts do not support microphone forwarding.
 
 ---
 
@@ -29,9 +44,9 @@ Currently supported features include:
 
 This is the **first public test build** of Moonlight Extended. Use it at your own risk.
 
-- Fully stable operation is not guaranteed on every PC, Bluetooth adapter, controller firmware, or host configuration.
-- Back up important settings before installation and report reproducible issues with logs and hardware details.
-- A clean installation is recommended when replacing an earlier development build.
+* Fully stable operation is not guaranteed on every PC, Bluetooth adapter, controller firmware, or host configuration.
+* Back up important settings before installation and report reproducible issues with logs and hardware details.
+* A clean installation is recommended when replacing an earlier development build.
 
 ### Windows Defender and SmartScreen
 
