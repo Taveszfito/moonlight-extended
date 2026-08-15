@@ -4,6 +4,8 @@
 #include "SDL_compat.h"
 #include "settings/mappingmanager.h"
 #include "streaming/audio/dualsenseaudio.h"
+#include "streaming/audio/miccapture.h"
+#include "streaming/audio/renderers/sdl.h"
 
 #include <QtMath>
 #include <cstring>
@@ -37,6 +39,12 @@ static bool sendDualSenseEffect(SDL_GameController* controller, const uint8_t* e
     return SDL_GameControllerSendEffect(controller, effect, sizeof(DualSenseOutputReport)) == 0;
 }
 
+static bool queryDualSenseHeadset(SDL_GameController* controller)
+{
+    static const uint8_t query[8] = { 'A', 'R', 'T', 'J', 'A', 'C', 'K', '?' };
+    return SDL_GameControllerSendEffect(controller, query, sizeof(query)) == 0;
+}
+
 static void activateDualSenseAudio(SDL_GameController* controller,
                                    StreamingPreferences::DualSenseAudioMode mode)
 {
@@ -55,7 +63,12 @@ static void activateDualSenseAudio(SDL_GameController* controller,
     route[4] = 0xff;
     if (!headset) {
         route[5] = 0xff;
-        route[7] = 0xff;
+        // The DualSense microphone gain is a separate 0x00-0x40 field.
+        // Keep the audio-control byte limited to internal-mic routing: 0xff
+        // also enables the microphone attenuation bits and makes USB capture
+        // extremely quiet before our software gain is ever applied.
+        route[6] = 0x40;
+        route[7] = 0x01;
     }
 
     bool routeOk = sendDualSenseEffect(controller, route);
@@ -181,6 +194,44 @@ void SdlInputHandler::sendGamepadState(GamepadState* state)
                                lsY,
                                rsX,
                                rsY);
+}
+
+void SdlInputHandler::pollDualSenseHeadsets()
+{
+    if (m_DualSenseAudioMode != StreamingPreferences::DSAM_AUTO) {
+        return;
+    }
+
+    const uint32_t now = SDL_GetTicks();
+    for (int i = 0; i < MAX_GAMEPADS; i++) {
+        GamepadState* state = &m_GamepadState[i];
+        if (state->controller == nullptr ||
+                SDL_GameControllerGetType(state->controller) != SDL_CONTROLLER_TYPE_PS5 ||
+                (state->dualSenseHeadsetStateKnown &&
+                 !SDL_TICKS_PASSED(now, state->lastDualSenseHeadsetPollTime + 100))) {
+            continue;
+        }
+
+        state->lastDualSenseHeadsetPollTime = now;
+        const bool connected = queryDualSenseHeadset(state->controller);
+        if (!state->dualSenseHeadsetStateKnown || connected != state->dualSenseHeadsetConnected) {
+            state->dualSenseHeadsetStateKnown = true;
+            state->dualSenseHeadsetConnected = connected;
+            if (state->dualSenseBluetooth) {
+                DualSenseAudioRenderer::instance().setBluetoothHeadsetActive(connected);
+            }
+            else {
+                activateDualSenseAudio(state->controller,
+                    connected ? StreamingPreferences::DSAM_USB_HEADSET : StreamingPreferences::DSAM_AUTO);
+                SdlAudioRenderer::setDualSenseHeadsetActive(connected);
+            }
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "DualSense %s headset %s; automatic main audio mirror %s",
+                        state->dualSenseBluetooth ? "Bluetooth" : "wired",
+                        connected ? "connected" : "disconnected",
+                        connected ? "enabled" : "disabled");
+        }
+    }
 }
 
 void SdlInputHandler::sendGamepadBatteryState(GamepadState* state, SDL_JoystickPowerLevel level)
@@ -358,9 +409,21 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
         state->buttons |= k_ButtonMap[event->button];
 
         if (event->button == SDL_CONTROLLER_BUTTON_MISC1 &&
-                SDL_GameControllerGetType(state->controller) == SDL_CONTROLLER_TYPE_PS5 &&
-                DualSenseAudioRenderer::instance().isBluetooth()) {
-            DualSenseAudioRenderer::instance().toggleBluetoothMicLed();
+                SDL_GameControllerGetType(state->controller) == SDL_CONTROLLER_TYPE_PS5) {
+            const bool muted = !MicCapture::isMuted();
+            MicCapture::setMuted(muted);
+            if (state->dualSenseBluetooth) {
+                DualSenseAudioRenderer::instance().setBluetoothMicLed(muted);
+            }
+            else {
+                // Change only the physical mute LED. Microphone capture stays
+                // active; forwarding is gated entirely in MicCapture.
+                DualSenseOutputReport micLed = {};
+                micLed.validFlag1 = 0x01;
+                micLed.muteButtonLed = muted ? 0x01 : 0x00;
+                SDL_GameControllerSendEffect(state->controller, &micLed, sizeof(micLed));
+            }
+            Session::get()->notifyMicrophoneMute(muted);
         }
 
         if (event->button == SDL_CONTROLLER_BUTTON_START) {
@@ -711,6 +774,10 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
                         "DualSense transport classification: %s path=%s",
                         bluetoothPath ? "Bluetooth" : "USB", path != nullptr ? path : "<null>");
             DualSenseAudioRenderer::instance().setController(state->controller, bluetoothPath, path);
+            state->dualSenseBluetooth = bluetoothPath;
+            state->dualSenseHeadsetStateKnown = false;
+            state->dualSenseHeadsetConnected = false;
+            state->lastDualSenseHeadsetPollTime = 0;
             if (!bluetoothPath) {
                 activateDualSenseAudio(state->controller, m_DualSenseAudioMode);
             }
@@ -865,6 +932,9 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
     else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         state = findStateForGamepad(event->which);
         if (state != NULL) {
+            if (state->dualSenseHeadsetConnected) {
+                SdlAudioRenderer::setDualSenseHeadsetActive(false);
+            }
             if (state->mouseEmulationTimer != 0) {
                 Session::get()->notifyMouseEmulationMode(false);
                 SDL_RemoveTimer(state->mouseEmulationTimer);

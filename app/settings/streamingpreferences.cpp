@@ -7,6 +7,7 @@
 #include <QLocale>
 #include <QReadWriteLock>
 #include <QtMath>
+#include <SDL.h>
 
 #include <QtDebug>
 
@@ -21,6 +22,9 @@
 #define SER_VSYNC "vsync"
 #define SER_GAMEOPTS "gameopts"
 #define SER_HOSTAUDIO "hostaudio"
+#define SER_MICCAPTURE "micCapture"
+#define SER_MICDEVICE "micDevice"
+#define SER_STOPSTEAMFORDUALSENSE "stopSteamForDualSense"
 #define SER_MULTICONT "multicontroller"
 #define SER_AUDIOCFG "audiocfg"
 #define SER_CONTROLLEREMULATION "controlleremulation"
@@ -134,6 +138,9 @@ void StreamingPreferences::reload()
     enableVsync = settings.value(SER_VSYNC, true).toBool();
     gameOptimizations = settings.value(SER_GAMEOPTS, true).toBool();
     playAudioOnHost = settings.value(SER_HOSTAUDIO, false).toBool();
+    micCapture = settings.value(SER_MICCAPTURE, false).toBool();
+    micDevice = settings.value(SER_MICDEVICE, QString()).toString();
+    stopSteamForDualSense = settings.value(SER_STOPSTEAMFORDUALSENSE, true).toBool();
     multiController = settings.value(SER_MULTICONT, true).toBool();
     enableMdns = settings.value(SER_MDNS, true).toBool();
     quitAppAfter = settings.value(SER_QUITAPPAFTER, false).toBool();
@@ -338,6 +345,9 @@ void StreamingPreferences::save()
     settings.setValue(SER_VSYNC, enableVsync);
     settings.setValue(SER_GAMEOPTS, gameOptimizations);
     settings.setValue(SER_HOSTAUDIO, playAudioOnHost);
+    settings.setValue(SER_MICCAPTURE, micCapture);
+    settings.setValue(SER_MICDEVICE, micDevice);
+    settings.setValue(SER_STOPSTEAMFORDUALSENSE, stopSteamForDualSense);
     settings.setValue(SER_MULTICONT, multiController);
     settings.setValue(SER_MDNS, enableMdns);
     settings.setValue(SER_QUITAPPAFTER, quitAppAfter);
@@ -370,6 +380,20 @@ void StreamingPreferences::save()
     settings.setValue(SER_SWAPFACEBUTTONS, swapFaceButtons);
     settings.setValue(SER_CAPTURESYSKEYS, captureSysKeysMode);
     settings.setValue(SER_KEEPAWAKE, keepAwake);
+}
+
+QStringList StreamingPreferences::microphoneDeviceNames() const
+{
+    QStringList devices;
+    const int count = SDL_GetNumAudioDevices(1);
+    for (int i = 0; i < count; i++) {
+        const char* name = SDL_GetAudioDeviceName(i, 1);
+        if (name != nullptr) {
+            devices.append(QString::fromUtf8(name));
+        }
+    }
+    devices.removeDuplicates();
+    return devices;
 }
 
 int StreamingPreferences::getDefaultBitrate(int width, int height, int fps, bool yuv444)

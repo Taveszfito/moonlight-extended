@@ -1,11 +1,13 @@
 #include "overlaymanager.h"
 #include "path.h"
+#include <QFile>
 
 using namespace Overlay;
 
 OverlayManager::OverlayManager() :
     m_Renderer(nullptr),
-    m_FontData(Path::readDataFile("ModeSeven.ttf"))
+    m_FontData(Path::readDataFile("ModeSeven.ttf")),
+    m_NotificationFontData()
 {
     memset(m_Overlays, 0, sizeof(m_Overlays));
 
@@ -14,6 +16,16 @@ OverlayManager::OverlayManager() :
 
     m_Overlays[OverlayType::OverlayStatusUpdate].color = {0xCC, 0x00, 0x00, 0xFF};
     m_Overlays[OverlayType::OverlayStatusUpdate].fontSize = 36;
+
+    m_Overlays[OverlayType::OverlayNotification].color = {0xF5, 0xF5, 0xF5, 0xFF};
+    m_Overlays[OverlayType::OverlayNotification].fontSize = 23;
+
+#ifdef Q_OS_WIN
+    QFile notificationFont(QStringLiteral("C:/Windows/Fonts/segoeui.ttf"));
+    if (notificationFont.open(QIODevice::ReadOnly)) {
+        m_NotificationFontData = notificationFont.readAll();
+    }
+#endif
 
     // While TTF will usually not be initialized here, it is valid for that not to
     // be the case, since Session destruction is deferred and could overlap with
@@ -124,14 +136,16 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
 
     // Construct the required font to render the overlay
     if (m_Overlays[type].font == nullptr) {
-        if (m_FontData.isEmpty()) {
+        const QByteArray& fontData = type == OverlayType::OverlayNotification && !m_NotificationFontData.isEmpty() ?
+                                         m_NotificationFontData : m_FontData;
+        if (fontData.isEmpty()) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                          "SDL overlay font failed to load");
             return;
         }
 
         // m_FontData must stay around until the font is closed
-        m_Overlays[type].font = TTF_OpenFontRW(SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
+        m_Overlays[type].font = TTF_OpenFontRW(SDL_RWFromConstMem(fontData.constData(), fontData.size()),
                                                1,
                                                m_Overlays[type].fontSize);
         if (m_Overlays[type].font == nullptr) {
@@ -149,12 +163,14 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
         (void**)&m_Overlays[type].surface,
         m_Overlays[type].enabled ?
             // The _Wrapped variant is required for line breaks to work
-            RenderTextOutlinedWrapped(m_Overlays[type].font,
+            (type == OverlayType::OverlayNotification ?
+                 RenderNotificationCard(m_Overlays[type].font, m_Overlays[type].text) :
+             RenderTextOutlinedWrapped(m_Overlays[type].font,
                                       m_Overlays[type].text,
                                       m_Overlays[type].color,
                                       {0, 0, 0, 255},
                                       4,
-                                      1024)
+                                      1024))
             : nullptr);
 
     // Notify the renderer
@@ -164,6 +180,54 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
     if (oldSurface != nullptr) {
         SDL_FreeSurface(oldSurface);
     }
+}
+
+SDL_Surface* OverlayManager::RenderNotificationCard(TTF_Font* font, const char* text)
+{
+    if (text == nullptr || text[0] == '\0') {
+        return nullptr;
+    }
+
+    SDL_Surface* textSurface = TTF_RenderUTF8_Blended(font, text, {0xF7, 0xF7, 0xF7, 0xFF});
+    if (textSurface == nullptr) {
+        return nullptr;
+    }
+
+    constexpr int horizontalPadding = 24;
+    constexpr int verticalPadding = 15;
+    constexpr int radius = 14;
+    constexpr int slideCanvas = 56;
+    const int cardWidth = textSurface->w + horizontalPadding * 2;
+    const int cardHeight = textSurface->h + verticalPadding * 2;
+    SDL_Surface* card = SDL_CreateRGBSurfaceWithFormat(0, cardWidth + slideCanvas, cardHeight,
+                                                       32, SDL_PIXELFORMAT_ARGB8888);
+    if (card == nullptr) {
+        SDL_FreeSurface(textSurface);
+        return nullptr;
+    }
+
+    SDL_FillRect(card, nullptr, SDL_MapRGBA(card->format, 0, 0, 0, 0));
+    SDL_LockSurface(card);
+    auto* pixels = static_cast<Uint32*>(card->pixels);
+    const Uint32 background = SDL_MapRGBA(card->format, 48, 51, 56, 238);
+    const Uint32 accent = SDL_MapRGBA(card->format, 145, 103, 190, 255);
+    for (int y = 0; y < cardHeight; ++y) {
+        for (int x = 0; x < cardWidth; ++x) {
+            const int cx = x < radius ? radius : (x >= cardWidth - radius ? cardWidth - radius - 1 : x);
+            const int cy = y < radius ? radius : (y >= cardHeight - radius ? cardHeight - radius - 1 : y);
+            const int dx = x - cx;
+            const int dy = y - cy;
+            if (dx * dx + dy * dy <= radius * radius) {
+                pixels[y * (card->pitch / 4) + x] = x < 5 ? accent : background;
+            }
+        }
+    }
+    SDL_UnlockSurface(card);
+
+    SDL_Rect textRect = {horizontalPadding, verticalPadding, textSurface->w, textSurface->h};
+    SDL_BlitSurface(textSurface, nullptr, card, &textRect);
+    SDL_FreeSurface(textSurface);
+    return card;
 }
 
 SDL_Surface* OverlayManager::RenderTextOutlinedWrapped(TTF_Font* font, const char* text, SDL_Color textColor, SDL_Color outlineColor, int outlineWidth, int wrapWidth) {

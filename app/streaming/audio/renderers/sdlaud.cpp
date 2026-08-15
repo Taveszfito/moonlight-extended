@@ -1,12 +1,16 @@
 #include "sdl.h"
+#include "streaming/audio/dualsenseaudio.h"
 
 #include <Limelight.h>
 
 #include <string>
 
+std::atomic_bool SdlAudioRenderer::s_DualSenseHeadsetRequested { false };
+
 SdlAudioRenderer::SdlAudioRenderer()
     : m_AudioDevice(0),
-      m_AudioBuffer(nullptr)
+      m_AudioBuffer(nullptr),
+      m_DualSenseHeadsetActive(false)
 {
     SDL_assert(!SDL_WasInit(SDL_INIT_AUDIO));
 
@@ -20,7 +24,8 @@ SdlAudioRenderer::SdlAudioRenderer()
 
 bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* opusConfig)
 {
-    SDL_AudioSpec want, have;
+    s_DualSenseHeadsetRequested.store(false, std::memory_order_release);
+    SDL_AudioSpec want;
 
     SDL_zero(want);
     want.freq = opusConfig->sampleRate;
@@ -39,24 +44,14 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
                   opusConfig->channelCount *
                   getAudioBufferSampleSize();
 
-    // Snapshot the Windows default endpoint before any DualSense extended
-    // stream opens its dedicated four-channel endpoint. Passing NULL here can
-    // follow a later default-device change and move Moonlight's main audio to
-    // the controller. An explicit name keeps the stream on its startup route.
-    std::string startupDeviceName;
-    if (SDL_GetNumAudioDevices(0) > 0) {
-        const char* defaultDevice = SDL_GetAudioDeviceName(0, 0);
-        if (defaultDevice != nullptr) {
-            startupDeviceName = defaultDevice;
-        }
-    }
+    // SDL's first enumerated device is not necessarily the Windows default
+    // endpoint. Open the system default explicitly instead of accidentally
+    // pinning the stream to an arbitrary virtual device (for example Steam
+    // Streaming Speakers).
+    m_StartupDeviceName.clear();
 
-    m_AudioDevice = SDL_OpenAudioDevice(startupDeviceName.empty() ? NULL : startupDeviceName.c_str(),
-                                        0, &want, &have, 0);
-    if (m_AudioDevice == 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                     "Failed to open audio device: %s",
-                     SDL_GetError());
+    m_WantedSpec = want;
+    if (!openAudioDevice(false)) {
         return false;
     }
 
@@ -73,21 +68,72 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
                 want.samples * want.channels * getAudioBufferSampleSize());
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "Obtained audio buffer: %u samples (%u bytes)",
-                have.samples,
-                have.size);
-
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "SDL audio driver: %s",
                 SDL_GetCurrentAudioDriver());
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Main stream audio pinned to startup device: %s",
-                startupDeviceName.empty() ? "<system default>" : startupDeviceName.c_str());
+                m_StartupDeviceName.empty() ? "<system default>" : m_StartupDeviceName.c_str());
 
-    // Start playback
-    SDL_PauseAudioDevice(m_AudioDevice, 0);
+    return true;
+}
 
+void SdlAudioRenderer::setDualSenseHeadsetActive(bool active)
+{
+    s_DualSenseHeadsetRequested.store(active, std::memory_order_release);
+}
+
+const char* SdlAudioRenderer::findDualSenseAudioDevice() const
+{
+    const int deviceCount = SDL_GetNumAudioDevices(0);
+    for (int i = 0; i < deviceCount; i++) {
+        const char* candidate = SDL_GetAudioDeviceName(i, 0);
+        if (candidate != nullptr &&
+                SDL_strcasestr(candidate, "Apollo Extended") == nullptr &&
+                (SDL_strcasestr(candidate, "DualSense") != nullptr ||
+                 SDL_strcasestr(candidate, "Wireless Controller") != nullptr)) {
+            return candidate;
+        }
+    }
+    return nullptr;
+}
+
+bool SdlAudioRenderer::openAudioDevice(bool useDualSenseHeadset)
+{
+    const char* deviceName = useDualSenseHeadset ? findDualSenseAudioDevice() :
+        (m_StartupDeviceName.empty() ? nullptr : m_StartupDeviceName.c_str());
+    if (useDualSenseHeadset && deviceName == nullptr) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "DualSense headset connected, but its Windows audio endpoint was not found");
+        return false;
+    }
+
+    SDL_AudioSpec have = {};
+    SDL_AudioDeviceID newDevice = SDL_OpenAudioDevice(deviceName, 0, &m_WantedSpec, &have, 0);
+    if (newDevice == 0) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "Failed to open %s audio device '%s': %s",
+                     useDualSenseHeadset ? "DualSense headset" : "startup",
+                     deviceName != nullptr ? deviceName : "<system default>", SDL_GetError());
+        return false;
+    }
+
+    SDL_PauseAudioDevice(newDevice, 0);
+    if (m_AudioDevice != 0) {
+        SDL_ClearQueuedAudio(m_AudioDevice);
+        SDL_PauseAudioDevice(m_AudioDevice, 1);
+        SDL_CloseAudioDevice(m_AudioDevice);
+    }
+    m_AudioDevice = newDevice;
+    m_DualSenseHeadsetActive = useDualSenseHeadset;
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Main stream audio switched to %s: %s",
+                useDualSenseHeadset ? "DualSense headset" : "startup output",
+                deviceName != nullptr ? deviceName : "<system default>");
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Obtained audio buffer: %u samples (%u bytes)",
+                have.samples,
+                have.size);
     return true;
 }
 
@@ -114,6 +160,28 @@ void* SdlAudioRenderer::getAudioBuffer(int*)
 
 bool SdlAudioRenderer::submitAudio(int bytesWritten)
 {
+    if (bytesWritten > 0 && DualSenseAudioRenderer::instance().isBluetoothHeadsetActive()) {
+        const int frameCount = bytesWritten / (m_WantedSpec.channels * sizeof(float));
+        DualSenseAudioRenderer::instance().submitMainAudio(
+            static_cast<const float*>(m_AudioBuffer), frameCount, m_WantedSpec.channels);
+        return true;
+    }
+
+    const bool headsetRequested = s_DualSenseHeadsetRequested.load(std::memory_order_acquire);
+    if (headsetRequested != m_DualSenseHeadsetActive) {
+        if (!openAudioDevice(headsetRequested)) {
+            if (headsetRequested) {
+                // Keep the current output and wait for a new physical jack
+                // transition instead of retrying an unavailable endpoint for
+                // every decoded audio packet.
+                s_DualSenseHeadsetRequested.store(false, std::memory_order_release);
+            }
+            else {
+                return false;
+            }
+        }
+    }
+
     if (bytesWritten == 0) {
         // Nothing to do
         return true;

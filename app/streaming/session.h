@@ -9,6 +9,7 @@
 #include "input/input.h"
 #include "video/decoder.h"
 #include "audio/renderers/renderer.h"
+#include "audio/miccapture.h"
 #include "video/overlaymanager.h"
 
 class SupportedVideoFormatList : public QList<int>
@@ -122,6 +123,7 @@ public:
     }
 
     void flushWindowEvents();
+    void startMicrophoneCapture();
 
     void setShouldExit(bool quitHostApp = false);
 
@@ -168,6 +170,7 @@ private:
     void toggleFullscreen();
 
     void notifyMouseEmulationMode(bool enabled);
+    void notifyMicrophoneMute(bool muted);
 
     void updateOptimalWindowDisplayMode();
 
@@ -266,6 +269,7 @@ private:
     bool m_UnexpectedTermination;
     SdlInputHandler* m_InputHandler;
     int m_MouseEmulationRefCount;
+    uint32_t m_MicrophoneOverlayGeneration = 0;
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
@@ -280,6 +284,8 @@ private:
 
     OpusMSDecoder* m_OpusDecoder;
     IAudioRenderer* m_AudioRenderer;
+    MicCapture* m_MicCapture;
+    bool m_MicCaptureAttempted;
     OPUS_MULTISTREAM_CONFIGURATION m_ActiveAudioConfig;
     OPUS_MULTISTREAM_CONFIGURATION m_OriginalAudioConfig;
     int m_AudioSampleCount;

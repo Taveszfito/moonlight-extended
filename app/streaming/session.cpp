@@ -40,6 +40,11 @@
 #include <QGuiApplication>
 #include <QCursor>
 #include <QScreen>
+#include <QTimer>
+#include <QProcess>
+#include <QSettings>
+#include <QThread>
+#include <QFileInfo>
 #include "streaming/audio/dualsenseaudio.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -600,6 +605,8 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
       m_AudioRenderer(nullptr),
+      m_MicCapture(nullptr),
+      m_MicCaptureAttempted(false),
       m_AudioSampleCount(0),
       m_DropAudioEndTime(0)
 {
@@ -1731,8 +1738,42 @@ bool Session::startConnectionAsync()
         return false;
     }
 
+    if (m_Preferences->micCapture && m_Preferences->micDevice != "__dualsense__") {
+        startMicrophoneCapture();
+    }
+
     emit connectionStarted();
     return true;
+}
+
+void Session::notifyMicrophoneMute(bool muted)
+{
+    const uint32_t generation = ++m_MicrophoneOverlayGeneration;
+    m_OverlayManager.updateOverlayText(Overlay::OverlayNotification,
+                                       muted ? "Microphone muted" : "Microphone unmuted");
+    m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+
+    // Keep the existing in-stream status overlay brief. The QObject context
+    // automatically cancels this callback if the session is destroyed.
+    QTimer::singleShot(1600, this, [this, generation] {
+        if (generation == m_MicrophoneOverlayGeneration) {
+            m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+        }
+    });
+}
+
+void Session::startMicrophoneCapture()
+{
+    if (m_MicCaptureAttempted || !m_Preferences->micCapture) return;
+    m_MicCaptureAttempted = true;
+    m_MicCapture = new MicCapture();
+    m_MicCapture->setDeviceName(m_Preferences->micDevice.toStdString());
+    if (!m_MicCapture->start()) {
+        delete m_MicCapture;
+        m_MicCapture = nullptr;
+        m_MicCaptureAttempted = false;
+        emitLaunchWarning(tr("The selected microphone could not be opened. Streaming will continue without microphone passthrough."));
+    }
 }
 
 void Session::flushWindowEvents()
@@ -1772,6 +1813,32 @@ void Session::start()
 
     // We're now active
     s_ActiveSession = this;
+
+#ifdef Q_OS_WIN
+    if (m_Preferences->micCapture &&
+            m_Preferences->micDevice == "__dualsense__" &&
+            m_Preferences->stopSteamForDualSense) {
+        QSettings steamSettings(QStringLiteral("HKEY_CURRENT_USER\\Software\\Valve\\Steam"),
+                                QSettings::NativeFormat);
+        QString steamExe = steamSettings.value(QStringLiteral("SteamExe")).toString();
+        if (steamExe.isEmpty()) {
+            steamExe = QStringLiteral("C:/Program Files (x86)/Steam/steam.exe");
+        }
+        QProcess taskList;
+        taskList.start(QStringLiteral("tasklist.exe"),
+                       {QStringLiteral("/FI"), QStringLiteral("IMAGENAME eq steam.exe"),
+                        QStringLiteral("/NH")});
+        const bool taskListFinished = taskList.waitForFinished(1000);
+        const bool steamRunning = taskListFinished &&
+                taskList.readAllStandardOutput().toLower().contains("steam.exe");
+        if (steamRunning && QFileInfo::exists(steamExe)) {
+            QProcess::startDetached(steamExe, {QStringLiteral("-shutdown")});
+            // Give Steam Input time to release its shared HID handle before SDL
+            // enumerates and opens the physical DualSense.
+            QThread::msleep(1500);
+        }
+    }
+#endif
 
     // Initialize the gamepad code with our preferences
     // NB: m_InputHandler must be initialize before starting the connection.
@@ -1983,6 +2050,7 @@ void Session::exec()
     // because we want to suspend all Qt processing until the stream is over.
     SDL_Event event;
     for (;;) {
+        m_InputHandler->pollDualSenseHeadsets();
 #if SDL_VERSION_ATLEAST(2, 0, 18) && !defined(STEAM_LINK)
         // SDL 2.0.18 has a proper wait event implementation that uses platform
         // support to block on events rather than polling on Windows, macOS, X11,
@@ -1993,7 +2061,7 @@ void Session::exec()
         // NB: This behavior was introduced in SDL 2.0.16, but had a few critical
         // issues that could cause indefinite timeouts, delayed joystick detection,
         // and other problems.
-        if (!SDL_WaitEventTimeout(&event, 1000)) {
+        if (!SDL_WaitEventTimeout(&event, 100)) {
             presence.runCallbacks();
             continue;
         }
@@ -2305,7 +2373,22 @@ void Session::exec()
 #endif
         case SDL_CONTROLLERDEVICEADDED:
         case SDL_CONTROLLERDEVICEREMOVED:
+            if (event.type == SDL_CONTROLLERDEVICEREMOVED &&
+                    m_Preferences->micDevice == "__dualsense__" &&
+                    m_MicCapture != nullptr) {
+                m_MicCapture->stop();
+                delete m_MicCapture;
+                m_MicCapture = nullptr;
+                m_MicCaptureAttempted = false;
+            }
             m_InputHandler->handleControllerDeviceEvent(&event.cdevice);
+            // DualSense transport classification happens while the controller-added
+            // event is handled. Start its microphone only afterwards, otherwise a BT
+            // controller is mistaken for a missing Windows capture endpoint.
+            if (event.type == SDL_CONTROLLERDEVICEADDED &&
+                    m_Preferences->micDevice == "__dualsense__") {
+                startMicrophoneCapture();
+            }
             break;
         case SDL_JOYDEVICEADDED:
             m_InputHandler->handleJoystickArrivalEvent(&event.jdevice);
@@ -2327,6 +2410,12 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    if (m_MicCapture != nullptr) {
+        m_MicCapture->stop();
+        delete m_MicCapture;
+        m_MicCapture = nullptr;
+    }
+
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();
 

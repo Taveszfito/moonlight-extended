@@ -21,6 +21,10 @@ struct GamepadState {
 
     bool clickpadButtonEmulationEnabled;
     bool emulatedClickpadButtonDown;
+    bool dualSenseBluetooth;
+    bool dualSenseHeadsetStateKnown;
+    bool dualSenseHeadsetConnected;
+    uint32_t lastDualSenseHeadsetPollTime;
 
 #if SDL_VERSION_ATLEAST(2, 0, 14)
     uint8_t gyroReportPeriodMs;
@@ -115,6 +119,8 @@ public:
 #endif
 
     void handleJoystickArrivalEvent(SDL_JoyDeviceEvent* event);
+
+    void pollDualSenseHeadsets();
 
     void sendText(QString& string);
 

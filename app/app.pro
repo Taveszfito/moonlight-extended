@@ -194,6 +194,7 @@ SOURCES += \
     streaming/session.cpp \
     streaming/audio/audio.cpp \
     streaming/audio/dualsenseaudio.cpp \
+    streaming/audio/miccapture.cpp \
     streaming/audio/renderers/sdlaud.cpp \
     gui/computermodel.cpp \
     gui/appmodel.cpp \
@@ -231,6 +232,7 @@ HEADERS += \
     streaming/input/input.h \
     streaming/session.h \
     streaming/audio/dualsenseaudio.h \
+    streaming/audio/miccapture.h \
     streaming/audio/renderers/renderer.h \
     streaming/audio/renderers/sdl.h \
     gui/computermodel.h \

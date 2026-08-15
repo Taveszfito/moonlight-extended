@@ -932,23 +932,6 @@ Flickable {
                     }
                 }
 
-                Label {
-                    width: parent.width
-                    text: qsTr("DualSense audio and HD haptics (Apollo Extended)")
-                    font.pointSize: 12
-                    wrapMode: Text.Wrap
-                }
-
-                AutoResizingComboBox {
-                    id: dualSenseAudioModeComboBox
-                    width: parent.width
-                    model: [qsTr("Automatic"), qsTr("USB controller speaker"),
-                            qsTr("USB controller headset"), qsTr("HD haptics only"), qsTr("Off")]
-                    Component.onCompleted: currentIndex = Number(StreamingPreferences.dualSenseAudioMode)
-                    onActivated: StreamingPreferences.dualSenseAudioMode = currentIndex
-                }
-
-
                 CheckBox {
                     id: audioPcCheck
                     width: parent.width
@@ -981,6 +964,7 @@ Flickable {
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("Mutes Moonlight's audio when you Alt+Tab out of the stream or click on a different window.")
                 }
+
             }
         }
 
@@ -994,21 +978,6 @@ Flickable {
             Column {
                 anchors.fill: parent
                 spacing: 5
-
-                Label {
-                    width: parent.width
-                    text: qsTr("Host controller emulation (Apollo Extended)")
-                    font.pointSize: 12
-                    wrapMode: Text.Wrap
-                }
-
-                AutoResizingComboBox {
-                    id: controllerEmulationComboBox
-                    width: parent.width
-                    model: [qsTr("Automatic"), qsTr("Xbox 360"), qsTr("DualShock 4"), qsTr("DualSense")]
-                    Component.onCompleted: currentIndex = Number(StreamingPreferences.controllerEmulationMode)
-                    onActivated: StreamingPreferences.controllerEmulationMode = currentIndex
-                }
 
                 CheckBox {
                     id: optimizeGameSettingsCheck
@@ -1035,6 +1004,109 @@ Flickable {
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("This will close the app or game you are streaming when you end your stream. You will lose any unsaved progress!")
+                }
+            }
+        }
+
+        GroupBox {
+            id: extendedSettingsGroupBox
+            width: (parent.width - (parent.leftPadding + parent.rightPadding))
+            padding: 12
+            title: "<font color=\"skyblue\">" + qsTr("Extended Settings") + "</font>"
+            font.pointSize: 12
+
+            Column {
+                anchors.fill: parent
+                spacing: 5
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Host controller emulation (Apollo Extended)")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: controllerEmulationComboBox
+                    width: parent.width
+                    model: [qsTr("Automatic"), qsTr("Xbox 360"), qsTr("DualShock 4"), qsTr("DualSense")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.controllerEmulationMode)
+                    onActivated: StreamingPreferences.controllerEmulationMode = currentIndex
+                }
+
+                Label {
+                    width: parent.width
+                    text: qsTr("DualSense audio and HD haptics (Apollo Extended)")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: dualSenseAudioModeComboBox
+                    width: parent.width
+                    model: [qsTr("Automatic"), qsTr("USB controller speaker"),
+                            qsTr("USB controller headset"), qsTr("HD haptics only"), qsTr("Off")]
+                    Component.onCompleted: currentIndex = Number(StreamingPreferences.dualSenseAudioMode)
+                    onActivated: StreamingPreferences.dualSenseAudioMode = currentIndex
+                }
+
+                CheckBox {
+                    id: micCaptureCheck
+                    width: parent.width
+                    text: qsTr("Send microphone to host PC (Apollo Extended)")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.micCapture
+                    onCheckedChanged: StreamingPreferences.micCapture = checked
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Sends the selected client microphone through the encrypted stream to the Steam Streaming Microphone endpoint on the host.")
+                }
+
+                Label {
+                    width: parent.width
+                    visible: micCaptureCheck.checked
+                    text: qsTr("Microphone source")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: micDeviceComboBox
+                    width: parent.width
+                    visible: micCaptureCheck.checked
+                    textRole: "text"
+                    model: ListModel { id: micDeviceListModel }
+
+                    function reloadDevices() {
+                        micDeviceListModel.clear()
+                        micDeviceListModel.append({ "text": qsTr("Windows default microphone"), "value": "" })
+                        micDeviceListModel.append({ "text": qsTr("DualSense controller microphone"), "value": "__dualsense__" })
+                        var devices = StreamingPreferences.microphoneDeviceNames()
+                        for (var i = 0; i < devices.length; i++)
+                            micDeviceListModel.append({ "text": devices[i], "value": devices[i] })
+
+                        currentIndex = 0
+                        for (var j = 0; j < micDeviceListModel.count; j++) {
+                            if (micDeviceListModel.get(j).value === StreamingPreferences.micDevice) {
+                                currentIndex = j
+                                break
+                            }
+                        }
+                    }
+
+                    Component.onCompleted: reloadDevices()
+                    onActivated: StreamingPreferences.micDevice = micDeviceListModel.get(currentIndex).value
+                }
+
+                CheckBox {
+                    width: parent.width
+                    visible: micCaptureCheck.checked && StreamingPreferences.micDevice === "__dualsense__"
+                    text: qsTr("Automatically close Steam while using the DualSense microphone (prevents Steam Input from conflicting with the controller)")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.stopSteamForDualSense
+                    onCheckedChanged: StreamingPreferences.stopSteamForDualSense = checked
                 }
             }
         }

@@ -1168,6 +1168,12 @@ bool D3D11VARenderer::createOverlayVertexBuffer(Overlay::OverlayType type, int w
         renderRect.x = 0;
         renderRect.y = 0;
     }
+    else if (type == Overlay::OverlayNotification) {
+        // Top right, with a small safe-area margin. The transparent tail on the
+        // surface makes the card appear inset from the display edge.
+        renderRect.x = m_DisplayWidth - width - 24;
+        renderRect.y = m_DisplayHeight - height - 24;
+    }
     else if (type == Overlay::OverlayDebug) {
         // Top left
         renderRect.x = 0;
