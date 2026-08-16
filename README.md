@@ -36,15 +36,17 @@ Any microphone available on the client PC can be selected and forwarded to the h
 
 Microphone transmission can be muted directly on the client, preventing microphone audio from being sent to the host.
 
+Microphone forwarding uses the **Steam Streaming audio drivers** as its backend, so **Steam must be installed on the host PC** for microphone forwarding to work.
+
 > **Apollo Extended required:** Microphone forwarding is an Extended protocol feature and requires a compatible [Apollo Extended](https://github.com/Taveszfito/Apollo-Extended) host. Standard Sunshine and Apollo hosts do not support microphone forwarding.
 
 ---
 
 ## ⚠️ Experimental Test Build
 
-This is the **first public test build** of Moonlight Extended. Use it at your own risk.
+Moonlight Extended is currently an **experimental test build** and remains under active development. Use it at your own risk.
 
-* Fully stable operation is not guaranteed on every PC, Bluetooth adapter, controller firmware, or host configuration.
+* Fully stable operation is not guaranteed across every hardware and software configuration.
 * Back up important settings before installation and report reproducible issues with logs and hardware details.
 * A clean installation is recommended when replacing an earlier development build.
 
