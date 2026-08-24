@@ -168,6 +168,7 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         updateKeyboardGrabState();
         break;
 
+
     default:
         Q_UNREACHABLE();
     }
@@ -182,6 +183,41 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
     if (event->repeat) {
         // Ignore repeat key down events
         SDL_assert(event->state == SDL_PRESSED);
+        return;
+    }
+
+    // The Extended Quick Menu shortcut must be handled before forwarding the
+    // key to the host. Normalize alphabetic SDL key symbols to Windows/Qt VK
+    // values, which are stored by the settings capture dialog.
+    int shortcutKey = static_cast<int>(event->keysym.sym);
+    if (shortcutKey >= SDLK_a && shortcutKey <= SDLK_z) {
+        shortcutKey = shortcutKey - SDLK_a + 'A';
+    }
+    int shortcutModifiers = 0;
+    if (event->keysym.mod & KMOD_CTRL) shortcutModifiers |= 0x01;
+    if (event->keysym.mod & KMOD_ALT) shortcutModifiers |= 0x02;
+    if (event->keysym.mod & KMOD_SHIFT) shortcutModifiers |= 0x04;
+    if (event->keysym.mod & KMOD_GUI) shortcutModifiers |= 0x08;
+    const auto* quickMenuPrefs = StreamingPreferences::get();
+    if (shortcutKey == quickMenuPrefs->microphoneMuteKeyboardKey &&
+            (shortcutModifiers & quickMenuPrefs->microphoneMuteKeyboardModifiers) == quickMenuPrefs->microphoneMuteKeyboardModifiers) {
+        if (event->state == SDL_PRESSED && !m_MicrophoneMuteKeyboardLatched) {
+            m_MicrophoneMuteKeyboardLatched = true;
+            const bool muted=!MicCapture::isMuted(); MicCapture::setMuted(muted); Session::get()->notifyMicrophoneMute(muted);
+        } else if(event->state==SDL_RELEASED) m_MicrophoneMuteKeyboardLatched=false;
+        return;
+    }
+    m_QuickMenuKeyboardKey = quickMenuPrefs->quickMenuKeyboardKey;
+    m_QuickMenuKeyboardModifiers = quickMenuPrefs->quickMenuKeyboardModifiers;
+    if (shortcutKey == m_QuickMenuKeyboardKey &&
+            (shortcutModifiers & m_QuickMenuKeyboardModifiers) == m_QuickMenuKeyboardModifiers) {
+        if (event->state == SDL_PRESSED) {
+            setCaptureActive(false);
+            raiseAllKeys();
+            QMetaObject::invokeMethod(StreamingPreferences::get(),
+                                      "requestControllerKbmConfiguration",
+                                      Qt::QueuedConnection);
+        }
         return;
     }
 

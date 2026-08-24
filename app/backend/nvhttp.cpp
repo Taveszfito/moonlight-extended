@@ -11,6 +11,8 @@
 #include <QImageReader>
 #include <QtEndian>
 #include <QNetworkProxy>
+#include <QUrlQuery>
+#include <stdexcept>
 
 #define FAST_FAIL_TIMEOUT_MS 2000
 #define REQUEST_TIMEOUT_MS 5000
@@ -266,6 +268,34 @@ NvHTTP::quitApp()
         // that they can't kill someone else's stream.
         throw GfeHttpResponseException(599, "");
     }
+}
+
+QString NvHTTP::getClipboard()
+{
+    return openConnectionToString(m_BaseUrlHttps, "actions/clipboard", "type=text", 5000);
+}
+
+void NvHTTP::sendClipboard(const QString& text)
+{
+    QUrl url(m_BaseUrlHttps);
+    url.setPath("/actions/clipboard");
+    QUrlQuery query;
+    query.addQueryItem("uniqueid", m_UseTrueUid ? IdentityManager::get()->getUniqueId() : "0123456789ABCDEF");
+    query.addQueryItem("uuid", QUuid::createUuid().toRfc4122().toHex());
+    query.addQueryItem("type", "text");
+    url.setQuery(query);
+    QNetworkRequest request(url);
+    request.setSslConfiguration(IdentityManager::get()->getSslConfig());
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "text/plain");
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    QNetworkReply* reply = m_Nam->post(request, text.toUtf8());
+    connect(reply, &QNetworkReply::sslErrors, this, [this, reply](const QList<QSslError>& errors){ handleSslErrors(reply, errors); });
+    QEventLoop loop; QTimer timer; timer.setSingleShot(true);
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    connect(&timer, &QTimer::timeout, reply, &QNetworkReply::abort);
+    timer.start(5000); loop.exec();
+    if (reply->error() != QNetworkReply::NoError) { const auto error=reply->errorString(); reply->deleteLater(); throw std::runtime_error(error.toStdString()); }
+    reply->deleteLater();
 }
 
 QVector<NvDisplayMode>

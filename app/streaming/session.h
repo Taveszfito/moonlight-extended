@@ -126,6 +126,7 @@ public:
     void startMicrophoneCapture();
 
     void setShouldExit(bool quitHostApp = false);
+    void handleStreamQuickAction(const QString& action);
 
 signals:
     void stageStarting(QString stage);
@@ -171,6 +172,7 @@ private:
 
     void notifyMouseEmulationMode(bool enabled);
     void notifyMicrophoneMute(bool muted);
+    void notifyControllerKbmGyro(bool enabled);
 
     void updateOptimalWindowDisplayMode();
 
@@ -273,6 +275,7 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
+    bool m_QuickMenuQuitHostApp;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

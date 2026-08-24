@@ -5,6 +5,10 @@
 
 #include "SDL_compat.h"
 
+#include <QHash>
+
+class SdlInputHandler;
+
 struct GamepadState {
     SDL_GameController* controller;
     SDL_JoystickID jsId;
@@ -17,6 +21,8 @@ struct GamepadState {
 #endif
 
     SDL_TimerID mouseEmulationTimer;
+    SDL_TimerID kbmTimer;
+    SdlInputHandler* kbmOwner;
     uint32_t lastStartDownTime;
 
     bool clickpadButtonEmulationEnabled;
@@ -40,6 +46,11 @@ struct GamepadState {
     short lsX, lsY;
     short rsX, rsY;
     unsigned char lt, rt;
+    float kbmMouseRemainderX, kbmMouseRemainderY;
+    float kbmScrollRemainderX, kbmScrollRemainderY;
+    bool kbmDirectional[16];
+    bool kbmTriggerDown[2];
+    uint32_t kbmTriggerRepeatAt[2];
 };
 
 
@@ -200,6 +211,18 @@ private:
     static
     Uint32 mouseEmulationTimerCallback(Uint32 interval, void* param);
 
+    static Uint32 controllerKbmTimerCallback(Uint32 interval, void* param);
+    void pollControllerKbm(GamepadState* state);
+    void handleControllerKbmAction(GamepadState* state, const QString& source, bool pressed);
+    void releaseControllerKbmState(GamepadState* state);
+    void setControllerKbmKey(int virtualKey, bool pressed);
+    void setControllerKbmMouse(int button, bool pressed);
+    void updateControllerKbmStick(GamepadState* state, const QString& source, float x, float y, int slot);
+    QString controllerKbmSourceForButton(unsigned button) const;
+    void syncControllerKbmSettings();
+    void updateControllerKbmGyroHoldState(GamepadState* state);
+    void announceControllerAfterKbm(GamepadState* state);
+
     static
     Uint32 releaseLeftButtonTimerCallback(Uint32 interval, void* param);
 
@@ -215,6 +238,45 @@ private:
     bool m_SwapMouseButtons;
     bool m_ReverseScrollDirection;
     bool m_SwapFaceButtons;
+    bool m_GyroOverrideEnabled;
+    int m_GyroAxisSource[3];
+    bool m_GyroAxisInverted[3];
+    bool m_GyroAxisDisabled[3];
+    bool m_ControllerKbmMode;
+    int m_ControllerKbmStickSpeed;
+    bool m_ControllerKbmContinuous;
+    int m_ControllerKbmTriggerThreshold;
+    QString m_ControllerKbmTriggerBehavior;
+    int m_ControllerKbmTriggerRepeatRate;
+    int m_ControllerKbmTriggerThresholds[2];
+    QString m_ControllerKbmTriggerBehaviors[2];
+    int m_ControllerKbmTriggerRepeatRates[2];
+    QHash<QString, QString> m_ControllerKbmMappings;
+    QHash<int, int> m_ControllerKbmKeyRefs;
+    QHash<int, int> m_ControllerKbmMouseRefs;
+    char m_ControllerKbmModifiers;
+    uint32_t m_ControllerKbmShortcutMask;
+    uint32_t m_ControllerKbmButtonsDown;
+    bool m_ControllerKbmShortcutLatched;
+    bool m_ControllerKbmGyroEnabled;
+    bool m_ControllerKbmGyroHoldMode;
+    bool m_ControllerKbmGyroHoldActive;
+    uint32_t m_ControllerKbmGyroActivationMask;
+    bool m_ControllerKbmGyroActivationTriggers[2];
+    int m_ControllerKbmGyroSensitivity;
+    int m_ControllerKbmGyroAxisSensitivity[3];
+    bool m_ControllerKbmGyroAxisInverted[3];
+    uint32_t m_ControllerKbmGyroShortcutMask;
+    bool m_ControllerKbmGyroShortcutLatched;
+    bool m_TriggerOverrideEnabled;
+    int m_TriggerOverrideThresholds[2];
+    float m_ControllerKbmGyroRemainderX;
+    float m_ControllerKbmGyroRemainderY;
+    uint32_t m_ControllerKbmLastGyroTime;
+    int m_QuickMenuKeyboardKey;
+    int m_QuickMenuKeyboardModifiers;
+    bool m_QuickMenuKeyboardLatched;
+    bool m_MicrophoneMuteKeyboardLatched;
 
     bool m_NeedsManualCaptureOnLeave;
     bool m_MouseWasInVideoRegion;

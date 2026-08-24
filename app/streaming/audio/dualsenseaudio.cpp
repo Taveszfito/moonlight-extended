@@ -589,8 +589,8 @@ void DualSenseAudioRenderer::receive(uint16_t controllerNumber, uint16_t sequenc
 
         for (uint16_t frame = 0; frame < frameCount; frame++) {
             const uint8_t* source = pcm + frame * kBytesPerFrame;
-            m_SpeakerPcm[m_SpeakerFrames * 2] = includeControllerSpeaker ? readS16(source) : 0;
-            m_SpeakerPcm[m_SpeakerFrames * 2 + 1] = includeControllerSpeaker ? readS16(source + 2) : 0;
+            m_SpeakerPcm[m_SpeakerFrames * 2] = includeControllerSpeaker ? readS16(source) * m_VolumePercent / 100 : 0;
+            m_SpeakerPcm[m_SpeakerFrames * 2 + 1] = includeControllerSpeaker ? readS16(source + 2) * m_VolumePercent / 100 : 0;
             m_SpeakerFrames++;
 
             m_HapticLeft[m_HapticRingPosition] = readS16(source + 4);
@@ -661,6 +661,11 @@ void DualSenseAudioRenderer::receive(uint16_t controllerNumber, uint16_t sequenc
             output[offset] = output[offset + 1] = 0;
             output[offset + 2] = output[offset + 3] = 0;
         }
+        else if (m_VolumePercent != 100) {
+            int16_t* samples = reinterpret_cast<int16_t*>(output.data() + offset);
+            samples[0] = static_cast<int16_t>(samples[0] * m_VolumePercent / 100);
+            samples[1] = static_cast<int16_t>(samples[1] * m_VolumePercent / 100);
+        }
         // Speaker channels 1/2 and native haptics channels 3/4 otherwise pass
         // through bit-identically. The old 30% speaker calibration made the
         // mirrored stream unnecessarily quieter than direct Windows playback.
@@ -674,6 +679,12 @@ void DualSenseAudioRenderer::receive(uint16_t controllerNumber, uint16_t sequenc
     if (SDL_QueueAudio(m_Device, output.constData(), output.size()) != 0) {
         SDL_LogError(SDL_LOG_CATEGORY_AUDIO, "DualSense audio queue failed: %s", SDL_GetError());
     }
+}
+
+void DualSenseAudioRenderer::setVolume(int percent)
+{
+    QMutexLocker locker(&m_Mutex);
+    m_VolumePercent = std::clamp(percent, 0, 100);
 }
 
 void DualSenseAudioRenderer::close()

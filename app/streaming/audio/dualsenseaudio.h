@@ -33,6 +33,7 @@ public:
                  uint16_t frameCount, uint8_t channels,
                  uint8_t flags, const uint8_t* pcm, uint16_t pcmLength);
     void close();
+    void setVolume(int percent);
 
 private:
     DualSenseAudioRenderer() = default;
@@ -85,6 +86,7 @@ private:
     int m_HapticReportPosition = 0;
     StreamingPreferences::DualSenseAudioMode m_Mode = StreamingPreferences::DSAM_AUTO;
     int m_ExpectedSequence = -1;
+    int m_VolumePercent = 100;
     uint64_t m_PacketsReceived = 0;
     uint64_t m_PacketsLost = 0;
 };

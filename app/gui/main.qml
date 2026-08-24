@@ -22,6 +22,17 @@ ApplicationWindow {
     width: 1280
     height: 600
 
+    ControllerKbmWindow {
+        id: controllerKbmWindow
+    }
+
+    Connections {
+        target: StreamingPreferences
+        function onControllerKbmConfigurationRequested() {
+            controllerKbmWindow.openWindow()
+        }
+    }
+
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {
         // Override the background color to Material 2 colors for Qt 6.5+

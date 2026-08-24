@@ -161,6 +161,9 @@ public:
     void
     quitApp();
 
+    QString getClipboard();
+    void sendClipboard(const QString& text);
+
     void
     startApp(QString verb,
              bool isGfe,

@@ -15,6 +15,39 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_SwapMouseButtons(prefs.swapMouseButtons),
       m_ReverseScrollDirection(prefs.reverseScrollDirection),
       m_SwapFaceButtons(prefs.swapFaceButtons),
+      m_GyroOverrideEnabled(prefs.gyroOverrideEnabled),
+      m_GyroAxisSource{prefs.gyroXAxisSource, prefs.gyroYAxisSource, prefs.gyroZAxisSource},
+      m_GyroAxisInverted{prefs.gyroXAxisInverted, prefs.gyroYAxisInverted, prefs.gyroZAxisInverted},
+      m_GyroAxisDisabled{prefs.gyroXAxisDisabled, prefs.gyroYAxisDisabled, prefs.gyroZAxisDisabled},
+      m_ControllerKbmMode(prefs.controllerKbmMode),
+      m_ControllerKbmStickSpeed(prefs.controllerKbmStickSpeed),
+      m_ControllerKbmContinuous(prefs.controllerKbmContinuousStickMouse),
+      m_ControllerKbmTriggerThreshold(prefs.controllerKbmTriggerThreshold),
+      m_ControllerKbmTriggerBehavior(prefs.controllerKbmTriggerBehavior),
+      m_ControllerKbmTriggerRepeatRate(prefs.controllerKbmTriggerRepeatRate),
+      m_ControllerKbmModifiers(0),
+      m_ControllerKbmShortcutMask(0),
+      m_ControllerKbmButtonsDown(0),
+      m_ControllerKbmShortcutLatched(false),
+      m_ControllerKbmGyroEnabled(prefs.controllerKbmGyroEnabled),
+      m_ControllerKbmGyroHoldMode(prefs.controllerKbmGyroHoldMode),
+      m_ControllerKbmGyroHoldActive(false),
+      m_ControllerKbmGyroActivationMask(0),
+      m_ControllerKbmGyroActivationTriggers{false, false},
+      m_ControllerKbmGyroSensitivity(prefs.controllerKbmGyroSensitivity),
+      m_ControllerKbmGyroAxisSensitivity{prefs.controllerKbmGyroXSensitivity, prefs.controllerKbmGyroYSensitivity, prefs.controllerKbmGyroZSensitivity},
+      m_ControllerKbmGyroAxisInverted{prefs.controllerKbmGyroXInverted, prefs.controllerKbmGyroYInverted, prefs.controllerKbmGyroZInverted},
+      m_ControllerKbmGyroShortcutMask(0),
+      m_ControllerKbmGyroShortcutLatched(false),
+      m_TriggerOverrideEnabled(prefs.triggerOverrideEnabled),
+      m_TriggerOverrideThresholds{prefs.leftTriggerOverrideThreshold, prefs.rightTriggerOverrideThreshold},
+      m_ControllerKbmGyroRemainderX(0.0f),
+      m_ControllerKbmGyroRemainderY(0.0f),
+      m_ControllerKbmLastGyroTime(0),
+      m_QuickMenuKeyboardKey(prefs.quickMenuKeyboardKey),
+      m_QuickMenuKeyboardModifiers(prefs.quickMenuKeyboardModifiers),
+      m_QuickMenuKeyboardLatched(false),
+      m_MicrophoneMuteKeyboardLatched(false),
       m_MouseWasInVideoRegion(false),
       m_PendingMouseButtonsAllUpOnVideoRegionLeave(false),
       m_PointerRegionLockActive(false),
@@ -37,6 +70,22 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_DragButton(0),
       m_NumFingersDown(0)
 {
+    m_ControllerKbmTriggerThresholds[0] = prefs.controllerKbmLeftTriggerThreshold;
+    m_ControllerKbmTriggerThresholds[1] = prefs.controllerKbmRightTriggerThreshold;
+    m_ControllerKbmTriggerBehaviors[0] = prefs.controllerKbmLeftTriggerBehavior;
+    m_ControllerKbmTriggerBehaviors[1] = prefs.controllerKbmRightTriggerBehavior;
+    m_ControllerKbmTriggerRepeatRates[0] = prefs.controllerKbmLeftTriggerRepeatRate;
+    m_ControllerKbmTriggerRepeatRates[1] = prefs.controllerKbmRightTriggerRepeatRate;
+    const QVariantMap controllerKbmMappings = prefs.controllerKbmMappings;
+    for (auto it = controllerKbmMappings.constBegin(); it != controllerKbmMappings.constEnd(); ++it) {
+        m_ControllerKbmMappings.insert(it.key(), it.value().toString());
+    }
+    const QStringList shortcutButtons = prefs.controllerKbmShortcut.split(',', Qt::SkipEmptyParts);
+    for (const QString& button : shortcutButtons) {
+        bool ok = false;
+        const int index = button.toInt(&ok);
+        if (ok && index >= 0 && index < 32) m_ControllerKbmShortcutMask |= (1u << index);
+    }
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
         m_CaptureSystemKeysMode = StreamingPreferences::CSK_ALWAYS;
@@ -143,6 +192,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].scanCode = SDL_SCANCODE_K;
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].enabled = WMUtils::isRunningDesktopEnvironment();
 
+
     m_OldIgnoreDevices = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES);
     m_OldIgnoreDevicesExcept = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT);
 
@@ -231,6 +281,11 @@ SdlInputHandler::~SdlInputHandler()
             Session::get()->notifyMouseEmulationMode(false);
             SDL_RemoveTimer(m_GamepadState[i].mouseEmulationTimer);
         }
+        if (m_GamepadState[i].kbmTimer != 0) {
+            SDL_RemoveTimer(m_GamepadState[i].kbmTimer);
+            m_GamepadState[i].kbmTimer = 0;
+        }
+        releaseControllerKbmState(&m_GamepadState[i]);
 #if !SDL_VERSION_ATLEAST(2, 0, 9)
         if (m_GamepadState[i].haptic != nullptr) {
             SDL_HapticClose(m_GamepadState[i].haptic);

@@ -1,4 +1,7 @@
 #include "session.h"
+#include "backend/nvhttp.h"
+#include <QGuiApplication>
+#include <QClipboard>
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
@@ -601,6 +604,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
+      m_QuickMenuQuitHostApp(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -611,6 +615,49 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_DropAudioEndTime(0)
 {
     DualSenseAudioRenderer::instance().configure(m_Preferences->dualSenseAudioMode);
+    DualSenseAudioRenderer::instance().setVolume(m_Preferences->dualSenseControllerVolume);
+    m_LaunchWarnings.append(tr("Extended Quick Menu: press Ctrl + Alt + Shift + A during streaming."));
+}
+
+void Session::handleStreamQuickAction(const QString& action)
+{
+        if (action == QStringLiteral("disconnect")) interrupt();
+        else if (action == QStringLiteral("quit")) {
+            m_QuickMenuQuitHostApp = true;
+            interrupt();
+        }
+        else if (action == QStringLiteral("performance")) {
+            const bool enabled = !m_OverlayManager.isOverlayEnabled(Overlay::OverlayDebug);
+            m_OverlayManager.setOverlayState(Overlay::OverlayDebug, enabled);
+        }
+        else if (action == QStringLiteral("uploadClipboard")) {
+            try { NvHTTP(m_Computer).sendClipboard(QGuiApplication::clipboard()->text());
+                m_OverlayManager.updateOverlayText(Overlay::OverlayNotification, "Clipboard uploaded"); }
+            catch (...) { m_OverlayManager.updateOverlayText(Overlay::OverlayNotification, "Clipboard upload failed"); }
+            m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+            const uint32_t generation = ++m_MicrophoneOverlayGeneration;
+            QTimer::singleShot(1600, this, [this, generation] {
+                if (generation == m_MicrophoneOverlayGeneration)
+                    m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+            });
+        }
+        else if (action == QStringLiteral("fetchClipboard")) {
+            try { QGuiApplication::clipboard()->setText(NvHTTP(m_Computer).getClipboard());
+                m_OverlayManager.updateOverlayText(Overlay::OverlayNotification, "Clipboard fetched"); }
+            catch (...) { m_OverlayManager.updateOverlayText(Overlay::OverlayNotification, "Clipboard fetch failed"); }
+            m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+            const uint32_t generation = ++m_MicrophoneOverlayGeneration;
+            QTimer::singleShot(1600, this, [this, generation] {
+                if (generation == m_MicrophoneOverlayGeneration)
+                    m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+            });
+        }
+        else if (action == QStringLiteral("microphone")) {
+            delete m_MicCapture; m_MicCapture = nullptr; m_MicCaptureAttempted = false;
+            if (m_Preferences->micCapture) startMicrophoneCapture();
+        }
+        else if (action == QStringLiteral("controllerVolume"))
+            DualSenseAudioRenderer::instance().setVolume(m_Preferences->dualSenseControllerVolume);
 }
 
 Session::~Session()
@@ -1299,7 +1346,7 @@ private:
         // Only quit the running app if our session terminated gracefully
         bool shouldQuit =
                 !m_Session->m_UnexpectedTermination &&
-                m_Session->m_Preferences->quitAppAfter;
+                (m_Session->m_Preferences->quitAppAfter || m_Session->m_QuickMenuQuitHostApp);
 
         // Notify the UI
         if (shouldQuit) {
@@ -1759,6 +1806,18 @@ void Session::notifyMicrophoneMute(bool muted)
         if (generation == m_MicrophoneOverlayGeneration) {
             m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
         }
+    });
+}
+
+void Session::notifyControllerKbmGyro(bool enabled)
+{
+    const uint32_t generation = ++m_MicrophoneOverlayGeneration;
+    m_OverlayManager.updateOverlayText(Overlay::OverlayNotification,
+                                       enabled ? "Gyro mouse enabled" : "Gyro mouse disabled");
+    m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+    QTimer::singleShot(1600, this, [this, generation] {
+        if (generation == m_MicrophoneOverlayGeneration)
+            m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
     });
 }
 
