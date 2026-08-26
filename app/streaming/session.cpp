@@ -1821,6 +1821,28 @@ void Session::notifyControllerKbmGyro(bool enabled)
     });
 }
 
+void Session::notifyGyroStick(bool enabled)
+{
+    const uint32_t generation = ++m_MicrophoneOverlayGeneration;
+    m_OverlayManager.updateOverlayText(Overlay::OverlayNotification,
+                                       enabled ? "Gyro stick enabled" : "Gyro stick disabled");
+    m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+    QTimer::singleShot(1600, this, [this, generation] {
+        if (generation == m_MicrophoneOverlayGeneration) m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+    });
+}
+
+void Session::notifyControllerBatteryLow(int percentage)
+{
+    const uint32_t generation = ++m_MicrophoneOverlayGeneration;
+    const QByteArray text = QStringLiteral("Controller battery low — %1%").arg(percentage).toUtf8();
+    m_OverlayManager.updateOverlayText(Overlay::OverlayNotification, text.constData());
+    m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+    QTimer::singleShot(2200, this, [this, generation] {
+        if (generation == m_MicrophoneOverlayGeneration) m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+    });
+}
+
 void Session::startMicrophoneCapture()
 {
     if (m_MicCaptureAttempted || !m_Preferences->micCapture) return;

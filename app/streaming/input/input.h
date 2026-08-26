@@ -31,6 +31,9 @@ struct GamepadState {
     bool dualSenseHeadsetStateKnown;
     bool dualSenseHeadsetConnected;
     uint32_t lastDualSenseHeadsetPollTime;
+    bool batteryWarningShown;
+    int batteryPercentage;
+    int batteryState;
 
 #if SDL_VERSION_ATLEAST(2, 0, 14)
     uint8_t gyroReportPeriodMs;
@@ -51,6 +54,8 @@ struct GamepadState {
     bool kbmDirectional[16];
     bool kbmTriggerDown[2];
     uint32_t kbmTriggerRepeatAt[2];
+    short gyroStickX, gyroStickY;
+    float gyroStickFilteredX, gyroStickFilteredY;
 };
 
 
@@ -222,6 +227,7 @@ private:
     void syncControllerKbmSettings();
     void updateControllerKbmGyroHoldState(GamepadState* state);
     void announceControllerAfterKbm(GamepadState* state);
+    void updateGyroRightStick(GamepadState* state, const float data[3]);
 
     static
     Uint32 releaseLeftButtonTimerCallback(Uint32 interval, void* param);
@@ -277,6 +283,21 @@ private:
     int m_QuickMenuKeyboardModifiers;
     bool m_QuickMenuKeyboardLatched;
     bool m_MicrophoneMuteKeyboardLatched;
+    bool m_GyroStickEnabled;
+    int m_GyroStickSensitivity;
+    int m_GyroStickAxisSensitivity[3];
+    bool m_GyroStickAxisInverted[3];
+    bool m_GyroStickSmoothing;
+    int m_GyroStickDeadzone;
+    uint32_t m_GyroStickShortcutMask;
+    bool m_GyroStickShortcutLatched;
+    bool m_GyroStickHoldMode;
+    uint32_t m_GyroStickActivationMask;
+    bool m_GyroStickActivationTriggers[2];
+    bool m_GyroStickPrecisionEnabled;
+    int m_GyroStickPrecisionSensitivity;
+    uint32_t m_GyroStickPrecisionMask;
+    bool m_GyroStickPrecisionTriggers[2];
 
     bool m_NeedsManualCaptureOnLeave;
     bool m_MouseWasInVideoRegion;

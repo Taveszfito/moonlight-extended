@@ -163,8 +163,8 @@ void SdlInputHandler::sendGamepadState(GamepadState* state)
     unsigned char rt = state->rt;
     short lsX = state->lsX;
     short lsY = state->lsY;
-    short rsX = state->rsX;
-    short rsY = state->rsY;
+    short rsX = static_cast<short>(qBound(-32767, static_cast<int>(state->rsX) + state->gyroStickX, 32767));
+    short rsY = static_cast<short>(qBound(-32767, static_cast<int>(state->rsY) + state->gyroStickY, 32767));
 
     // When in single controller mode, merge all gamepad state together
     if (!m_MultiController) {
@@ -202,6 +202,25 @@ void SdlInputHandler::sendGamepadState(GamepadState* state)
                                rsX,
                                rsY);
 }
+
+static QString controllerTypeName(SDL_GameControllerType type)
+{
+    switch(type){case SDL_CONTROLLER_TYPE_PS5:return QStringLiteral("DualSense");case SDL_CONTROLLER_TYPE_PS4:return QStringLiteral("DualShock 4");case SDL_CONTROLLER_TYPE_XBOXONE:return QStringLiteral("Xbox One");case SDL_CONTROLLER_TYPE_XBOX360:return QStringLiteral("Xbox 360");case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO:return QStringLiteral("Nintendo Switch Pro");default:return QStringLiteral("Game controller");}
+}
+
+static void publishControllerStatus(GamepadState* state)
+{
+    if(!state||!state->controller)return;
+    QSettings settings;settings.beginGroup(QStringLiteral("livecontrollerstatus/%1").arg(state->jsId));
+    const char* name=SDL_GameControllerName(state->controller);settings.setValue(QStringLiteral("name"),QString::fromUtf8(name?name:"Controller"));
+    const SDL_GameControllerType type=SDL_GameControllerGetType(state->controller);settings.setValue(QStringLiteral("type"),controllerTypeName(type));
+    SDL_Joystick* joystick=SDL_GameControllerGetJoystick(state->controller);const char* path=SDL_JoystickPath(joystick);const bool bluetooth=state->dualSenseBluetooth||(path&&(std::strstr(path,"00001124-0000-1000-8000-00805f9b34fb")||std::strstr(path,"BTH")||std::strstr(path,"Bluetooth")));
+    settings.setValue(QStringLiteral("connection"),bluetooth?QStringLiteral("Bluetooth"):QStringLiteral("USB"));settings.setValue(QStringLiteral("battery"),state->batteryPercentage);settings.setValue(QStringLiteral("batteryState"),state->batteryState==1?QStringLiteral("Charging"):state->batteryState==2?QStringLiteral("Discharging"):QStringLiteral("Unknown"));
+    settings.setValue(QStringLiteral("headsetConnected"),state->dualSenseHeadsetStateKnown&&state->dualSenseHeadsetConnected);settings.setValue(QStringLiteral("headsetState"),state->dualSenseHeadsetStateKnown?(state->dualSenseHeadsetConnected?QStringLiteral("Connected"):QStringLiteral("Not connected")):QStringLiteral("Unknown"));
+    settings.setValue(QStringLiteral("microphone"),type==SDL_CONTROLLER_TYPE_PS5?QStringLiteral("Available"):QStringLiteral("Not available"));settings.endGroup();settings.sync();
+}
+
+static void removeControllerStatus(SDL_JoystickID id){QSettings settings;settings.remove(QStringLiteral("livecontrollerstatus/%1").arg(id));settings.sync();}
 
 static float kbmDeadzone(float value)
 {
@@ -304,6 +323,14 @@ void SdlInputHandler::syncControllerKbmSettings()
     m_GyroAxisDisabled[1] = settings.value(QStringLiteral("gyroydisabled"), false).toBool();
     m_GyroAxisDisabled[2] = settings.value(QStringLiteral("gyrozdisabled"), false).toBool();
     m_TriggerOverrideEnabled=settings.value(QStringLiteral("triggeroverrideenabled"),false).toBool(); m_TriggerOverrideThresholds[0]=settings.value(QStringLiteral("lefttriggeroverridethreshold"),50).toInt(); m_TriggerOverrideThresholds[1]=settings.value(QStringLiteral("righttriggeroverridethreshold"),50).toInt();
+    m_GyroStickEnabled=settings.value(QStringLiteral("gyrostickenabled"),false).toBool(); m_GyroStickSensitivity=settings.value(QStringLiteral("gyrosticksensitivity"),100).toInt();
+    m_GyroStickAxisSensitivity[0]=settings.value(QStringLiteral("gyrostickxsensitivity"),100).toInt();m_GyroStickAxisSensitivity[1]=settings.value(QStringLiteral("gyrostickysensitivity"),100).toInt();m_GyroStickAxisSensitivity[2]=settings.value(QStringLiteral("gyrostickzsensitivity"),100).toInt();
+    m_GyroStickAxisInverted[0]=settings.value(QStringLiteral("gyrostickxinverted"),false).toBool();m_GyroStickAxisInverted[1]=settings.value(QStringLiteral("gyrostickyinverted"),false).toBool();m_GyroStickAxisInverted[2]=settings.value(QStringLiteral("gyrostickzinverted"),false).toBool();m_GyroStickSmoothing=settings.value(QStringLiteral("gyrosticksmoothing"),true).toBool();m_GyroStickDeadzone=settings.value(QStringLiteral("gyrostickdeadzone"),8).toInt();
+    m_GyroStickShortcutMask=0; for(const QString& button:settings.value(QStringLiteral("gyrostickshortcut"),QStringLiteral("4,3")).toString().split(',',Qt::SkipEmptyParts)){bool ok=false;int index=button.toInt(&ok);if(ok&&index>=0&&index<32)m_GyroStickShortcutMask|=(1u<<index);}
+    m_GyroStickHoldMode=settings.value(QStringLiteral("gyrostickholdmode"),false).toBool();m_GyroStickPrecisionEnabled=settings.value(QStringLiteral("gyrostickprecisionenabled"),false).toBool();m_GyroStickPrecisionSensitivity=settings.value(QStringLiteral("gyrostickprecisionsensitivity"),40).toInt();
+    m_GyroStickActivationMask=m_GyroStickPrecisionMask=0;m_GyroStickActivationTriggers[0]=m_GyroStickActivationTriggers[1]=m_GyroStickPrecisionTriggers[0]=m_GyroStickPrecisionTriggers[1]=false;
+    auto parseGyroButtons=[](const QString& value,uint32_t& mask,bool triggers[2]){for(const QString& button:value.split(',',Qt::SkipEmptyParts)){bool ok=false;int index=button.toInt(&ok);if(!ok)continue;if(index>=0&&index<32)mask|=(1u<<index);else if(index==100)triggers[0]=true;else if(index==101)triggers[1]=true;}};
+    parseGyroButtons(settings.value(QStringLiteral("gyrostickactivationbuttons"),QStringLiteral("100")).toString(),m_GyroStickActivationMask,m_GyroStickActivationTriggers);parseGyroButtons(settings.value(QStringLiteral("gyrostickprecisionbuttons"),QStringLiteral("101")).toString(),m_GyroStickPrecisionMask,m_GyroStickPrecisionTriggers);
     m_ControllerKbmGyroShortcutMask = 0;
     const QString gyroShortcut = settings.value(QStringLiteral("controllerkbmgyroshortcut"), QStringLiteral("7,8")).toString();
     for (const QString& button : gyroShortcut.split(',', Qt::SkipEmptyParts)) {
@@ -313,7 +340,7 @@ void SdlInputHandler::syncControllerKbmSettings()
     if (wasEnabled == enabled) {
         for (GamepadState& state : m_GamepadState) {
             if (state.controller == nullptr) continue;
-            if (enabled && m_ControllerKbmGyroEnabled && SDL_GameControllerHasSensor(state.controller, SDL_SENSOR_GYRO)) {
+            if ((enabled || m_GyroStickEnabled) && SDL_GameControllerHasSensor(state.controller, SDL_SENSOR_GYRO)) {
                 state.gyroReportPeriodMs = 4;
                 SDL_GameControllerSetSensorEnabled(state.controller, SDL_SENSOR_GYRO, SDL_TRUE);
             }
@@ -339,7 +366,7 @@ void SdlInputHandler::syncControllerKbmSettings()
         for (GamepadState& state : m_GamepadState) {
             if (state.controller == nullptr) continue;
             state.kbmOwner = this;
-            if (m_ControllerKbmGyroEnabled && SDL_GameControllerHasSensor(state.controller, SDL_SENSOR_GYRO)) {
+            if ((m_ControllerKbmGyroEnabled || m_GyroStickEnabled) && SDL_GameControllerHasSensor(state.controller, SDL_SENSOR_GYRO)) {
                 state.gyroReportPeriodMs = 4;
                 SDL_GameControllerSetSensorEnabled(state.controller, SDL_SENSOR_GYRO, SDL_TRUE);
             }
@@ -439,6 +466,22 @@ void SdlInputHandler::handleControllerKbmAction(GamepadState*, const QString& so
             for (int i = 0; i < 4; ++i) LiSendMouseMoveEvent(x / 4, y / 4);
         }
     }
+}
+
+void SdlInputHandler::updateGyroRightStick(GamepadState* state,const float data[3])
+{
+    const bool activationHeld=(m_ControllerKbmButtonsDown&m_GyroStickActivationMask)!=0||(m_GyroStickActivationTriggers[0]&&state->lt>24)||(m_GyroStickActivationTriggers[1]&&state->rt>24);
+    if(m_ControllerKbmMode||!m_GyroStickEnabled||(m_GyroStickHoldMode&&!activationHeld)){const bool hadOutput=state->gyroStickX!=0||state->gyroStickY!=0;state->gyroStickX=state->gyroStickY=0;state->gyroStickFilteredX=state->gyroStickFilteredY=0;if(hadOutput)sendGamepadState(state);return;}
+    const bool precisionHeld=m_GyroStickPrecisionEnabled&&((m_ControllerKbmButtonsDown&m_GyroStickPrecisionMask)!=0||(m_GyroStickPrecisionTriggers[0]&&state->lt>24)||(m_GyroStickPrecisionTriggers[1]&&state->rt>24));
+    const int activeSensitivity=precisionHeld?m_GyroStickPrecisionSensitivity:m_GyroStickSensitivity;
+    float axis[3]={data[0],data[1],data[2]};
+    for(int i=0;i<3;i++){if(m_GyroStickAxisInverted[i])axis[i]=-axis[i];axis[i]*=(activeSensitivity/100.0f)*(m_GyroStickAxisSensitivity[i]/100.0f);}
+    float x=(axis[1]+axis[2])*0.34f,y=axis[0]*0.34f;
+    const float mag=qSqrt(x*x+y*y),dead=m_GyroStickDeadzone/100.0f;
+    if(mag<=dead)x=y=0;else if(mag>0){const float curved=qPow(qMin(1.0f,(mag-dead)/qMax(0.01f,1.0f-dead)),0.72f);x*=curved/mag;y*=curved/mag;}
+    const float alpha=m_GyroStickSmoothing?0.38f:1.0f;state->gyroStickFilteredX+=(x-state->gyroStickFilteredX)*alpha;state->gyroStickFilteredY+=(y-state->gyroStickFilteredY)*alpha;
+    state->gyroStickX=static_cast<short>(qBound(-1.0f,state->gyroStickFilteredX,1.0f)*32767);state->gyroStickY=static_cast<short>(qBound(-1.0f,state->gyroStickFilteredY,1.0f)*32767);
+    sendGamepadState(state);
 }
 
 void SdlInputHandler::updateControllerKbmStick(GamepadState* state, const QString& source,
@@ -568,6 +611,7 @@ void SdlInputHandler::pollDualSenseHeadsets()
                         state->dualSenseBluetooth ? "Bluetooth" : "wired",
                         connected ? "connected" : "disconnected",
                         connected ? "enabled" : "disabled");
+            publishControllerStatus(state);
         }
     }
 }
@@ -611,6 +655,21 @@ void SdlInputHandler::sendGamepadBatteryState(GamepadState* state, SDL_JoystickP
     }
 
     LiSendControllerBatteryEvent(state->index, batteryState, batteryPercentage);
+    state->batteryState = batteryState;
+    state->batteryPercentage = batteryPercentage == LI_BATTERY_PERCENTAGE_UNKNOWN ? -1 : batteryPercentage;
+    publishControllerStatus(state);
+
+    QSettings settings;
+    const bool warningEnabled = settings.value(QStringLiteral("controllerBatteryWarningEnabled"), true).toBool();
+    const int warningThreshold = settings.value(QStringLiteral("controllerBatteryWarningThreshold"), 10).toInt();
+    if (batteryState == LI_BATTERY_STATE_DISCHARGING && state->batteryPercentage >= 0) {
+        if (warningEnabled && state->batteryPercentage <= warningThreshold && !state->batteryWarningShown) {
+            state->batteryWarningShown = true;
+            Session::get()->notifyControllerBatteryLow(state->batteryPercentage);
+        }
+        else if (state->batteryPercentage > warningThreshold) state->batteryWarningShown = false;
+    }
+    else state->batteryWarningShown = false;
 }
 
 Uint32 SdlInputHandler::mouseEmulationTimerCallback(Uint32 interval, void *param)
@@ -741,6 +800,19 @@ void SdlInputHandler::handleControllerAxisEvent(SDL_ControllerAxisEvent* event)
 
     if (m_ControllerKbmMode && m_ControllerKbmGyroHoldMode)
         updateControllerKbmGyroHoldState(state);
+
+    if (!m_ControllerKbmMode && m_GyroStickShortcutMask != 0 &&
+            (m_ControllerKbmButtonsDown & m_GyroStickShortcutMask) == m_GyroStickShortcutMask) {
+        if (!m_GyroStickShortcutLatched) {
+            m_GyroStickShortcutLatched = true;
+            m_GyroStickEnabled = !m_GyroStickEnabled;
+            QSettings().setValue(QStringLiteral("gyrostickenabled"), m_GyroStickEnabled);
+            Session::get()->notifyGyroStick(m_GyroStickEnabled);
+            if (!m_GyroStickEnabled) { state->gyroStickX=state->gyroStickY=0; state->gyroStickFilteredX=state->gyroStickFilteredY=0; sendGamepadState(state); }
+        }
+        return;
+    }
+    if ((m_ControllerKbmButtonsDown & m_GyroStickShortcutMask) == 0) m_GyroStickShortcutLatched=false;
 
     // Only send the gamepad state to the host if it's not in mouse emulation mode
     if (state->mouseEmulationTimer == 0) {
@@ -991,10 +1063,12 @@ void SdlInputHandler::handleControllerSensorEvent(SDL_ControllerSensorEvent* eve
             memcpy(state->lastAccelEventData, event->data, sizeof(event->data));
             state->lastAccelEventTime = event->timestamp;
 
-            LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_ACCEL, event->data[0], event->data[1], event->data[2]);
+            if (m_ControllerKbmMode) LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_ACCEL, 0, 0, 0);
+            else LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_ACCEL, event->data[0], event->data[1], event->data[2]);
         }
         break;
     case SDL_SENSOR_GYRO:
+        updateGyroRightStick(state, event->data);
         if (m_ControllerKbmMode && m_ControllerKbmGyroEnabled &&
                 (!m_ControllerKbmGyroHoldMode || m_ControllerKbmGyroHoldActive)) {
             const uint32_t now = event->timestamp;
@@ -1012,6 +1086,7 @@ void SdlInputHandler::handleControllerSensorEvent(SDL_ControllerSensorEvent* eve
                 if (dx || dy) LiSendMouseMoveEvent(dx, dy);
             }
             m_ControllerKbmLastGyroTime = now;
+            LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_GYRO, 0, 0, 0);
             return;
         }
         if (state->gyroReportPeriodMs &&
@@ -1050,10 +1125,11 @@ void SdlInputHandler::handleControllerSensorEvent(SDL_ControllerSensorEvent* eve
             }
 
             // Convert rad/s to deg/s after applying the optional axis override.
-            LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_GYRO,
-                                        gyro[0] * 57.2957795f,
-                                        gyro[1] * 57.2957795f,
-                                        gyro[2] * 57.2957795f);
+            if (m_ControllerKbmMode) LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_GYRO, 0, 0, 0);
+            else LiSendControllerMotionEvent((uint8_t)state->index, LI_MOTION_TYPE_GYRO,
+                                             gyro[0] * 57.2957795f,
+                                             gyro[1] * 57.2957795f,
+                                             gyro[2] * 57.2957795f);
         }
         break;
     }
@@ -1187,6 +1263,9 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
 
         state->controller = controller;
         state->jsId = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(state->controller));
+        state->batteryPercentage = -1;
+        state->batteryState = LI_BATTERY_STATE_UNKNOWN;
+        state->batteryWarningShown = false;
 
         hapticCaps = 0;
 #if SDL_VERSION_ATLEAST(2, 0, 18)
@@ -1284,19 +1363,22 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
             SDL_free((void*)mapping);
         }
 
+        #if SDL_VERSION_ATLEAST(2, 0, 14)
+        if ((m_ControllerKbmMode || m_GyroStickEnabled) && SDL_GameControllerHasSensor(state->controller, SDL_SENSOR_GYRO)) {
+            state->gyroReportPeriodMs=4;SDL_GameControllerSetSensorEnabled(state->controller,SDL_SENSOR_GYRO,SDL_TRUE);
+        }
+        #endif
         if (m_ControllerKbmMode) {
             state->kbmOwner = this;
 #if SDL_VERSION_ATLEAST(2, 0, 14)
-            if (SDL_GameControllerHasSensor(state->controller, SDL_SENSOR_GYRO)) {
-                state->gyroReportPeriodMs = 4;
-                SDL_GameControllerSetSensorEnabled(state->controller, SDL_SENSOR_GYRO, SDL_TRUE);
-            }
+            if (SDL_GameControllerHasSensor(state->controller, SDL_SENSOR_GYRO)) { state->gyroReportPeriodMs = 4; SDL_GameControllerSetSensorEnabled(state->controller, SDL_SENSOR_GYRO, SDL_TRUE); }
 #endif
             if (m_ControllerKbmContinuous) {
                 state->kbmTimer = SDL_AddTimer(4, SdlInputHandler::controllerKbmTimerCallback, state);
             }
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                         "Controller %d is active in Extended keyboard and mouse mode", state->index);
+            publishControllerStatus(state);
             return;
         }
 
@@ -1425,6 +1507,7 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
         if (powerLevel != SDL_JOYSTICK_POWER_UNKNOWN) {
             sendGamepadBatteryState(state, powerLevel);
         }
+        else publishControllerStatus(state);
     }
     else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         state = findStateForGamepad(event->which);
@@ -1465,6 +1548,7 @@ void SdlInputHandler::handleControllerDeviceEvent(SDL_ControllerDeviceEvent* eve
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                         "Gamepad %d is gone",
                         state->index);
+            removeControllerStatus(state->jsId);
 
             // Send a final event to let the PC know this gamepad is gone
             if (!m_ControllerKbmMode) {

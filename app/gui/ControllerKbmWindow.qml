@@ -26,7 +26,7 @@ Window {
         lastToggleTime = now
         if (menuOpen) { closeWindow(); return }
         if (page !== undefined) selectedPage = page
-        refreshMicDevices(); menuOpen = true; show(); raise(); requestActivate()
+        refreshMicDevices(); StreamingPreferences.refreshControllerStatus(); menuOpen = true; show(); raise(); requestActivate()
     }
     function closeWindow() { menuOpen = false; hide() }
     function refreshMicDevices() {
@@ -42,6 +42,7 @@ Window {
         micCombo.currentIndex = selected
     }
     function shortcutDescription(value, separator) { var n={0:"A / Cross",1:"B / Circle",2:"X / Square",3:"Y / Triangle",4:"Back / Share",5:"Guide / PS",6:"Start / Options",7:"L3",8:"R3",9:"LB",10:"RB",15:"Mute",20:"Touchpad",100:"Left Trigger",101:"Right Trigger"}; var p=value.split(","); var out=[]; for(var i=0;i<p.length;i++) if(n[p[i]]!==undefined) out.push(n[p[i]]); return out.length ? out.join(separator || " + ") : qsTr("None selected") }
+    function controllerActionDescription(action){var n={"button:0":"A / Cross","button:1":"B / Circle","button:2":"X / Square","button:3":"Y / Triangle","button:4":"Back / Share","button:5":"Guide / PS","button:6":"Start / Options","button:7":"L3","button:8":"R3","button:9":"Left Shoulder","button:10":"Right Shoulder","button:11":"D-pad Up","button:12":"D-pad Down","button:13":"D-pad Left","button:14":"D-pad Right","button:15":"Mute","button:20":"Touchpad Click"};return n[action]||qsTr("Unassigned")}
 
     Connections { target: StreamingPreferences; function onControllerKbmMappingsChanged() { root.revision++ } }
     Shortcut {
@@ -50,6 +51,7 @@ Window {
         enabled: root.menuOpen
         onActivated: root.openWindow()
     }
+    Timer { interval:250; repeat:true; running:root.menuOpen; onTriggered:StreamingPreferences.refreshControllerStatus() }
 
     Rectangle {
         anchors.fill: parent; anchors.margins: 12; radius: 16
@@ -61,7 +63,16 @@ Window {
                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                 height: 48
                 MouseArea {
-                    Layout.fillWidth: true; Layout.fillHeight: true; onPressed: root.startSystemMove()
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    property real dragStartX: 0
+                    property real dragStartY: 0
+                    onPressed: function(mouse) { dragStartX = mouse.x; dragStartY = mouse.y }
+                    onPositionChanged: function(mouse) {
+                        if (pressed) {
+                            root.x += mouse.x - dragStartX
+                            root.y += mouse.y - dragStartY
+                        }
+                    }
                     Label { anchors.verticalCenter: parent.verticalCenter; text: qsTr("Extended Quick Menu"); font.pixelSize: 23; font.bold: true }
                 }
                 Button { text: "✕"; flat: true; font.pixelSize: 18; onClicked: root.closeWindow(); ToolTip.visible: hovered; ToolTip.text: qsTr("Close") }
@@ -220,8 +231,9 @@ Window {
                     }
                 }
                 Item {Layout.fillWidth:true;Layout.fillHeight:true;visible:root.selectedPage===0
-                    ScrollView{anchors.fill:parent;clip:true;contentWidth:availableWidth
-                        ColumnLayout{width:parent.width;spacing:16
+                  RowLayout{anchors.fill:parent;spacing:16
+                    ScrollView{id:streamFunctionsScroll;Layout.fillWidth:true;Layout.fillHeight:true;clip:true;contentWidth:availableWidth
+                        ColumnLayout{width:streamFunctionsScroll.availableWidth;spacing:16
                             Label{text:qsTr("Stream");font.pixelSize:22;font.bold:true}
                             Rectangle{Layout.fillWidth:true;height:1;color:"#555"}
                             RowLayout{Button{text:qsTr("Disconnect");onClicked:{root.closeWindow();StreamingPreferences.requestStreamQuickAction("disconnect")}}Button{text:qsTr("Quit session");onClicked:{root.closeWindow();StreamingPreferences.requestStreamQuickAction("quit")}}Button{text:qsTr("Toggle performance overlay");onClicked:StreamingPreferences.requestStreamQuickAction("performance")}}
@@ -231,16 +243,43 @@ Window {
                             Label{text:qsTr("Microphone forwarding");font.pixelSize:18;font.bold:true}
                             CheckBox{text:qsTr("Forward microphone to host");checked:StreamingPreferences.micCapture;onToggled:{StreamingPreferences.micCapture=checked;StreamingPreferences.save();StreamingPreferences.requestStreamQuickAction("microphone")}}
                             ListModel{id:micDeviceModel}
-                            ComboBox{id:micCombo;Layout.fillWidth:true;model:micDeviceModel;textRole:"text";valueRole:"value";onActivated:{StreamingPreferences.micDevice=currentValue;StreamingPreferences.save();StreamingPreferences.requestStreamQuickAction("microphone")}}
-                            RowLayout{Layout.fillWidth:true;Label{text:qsTr("Microphone mute shortcut");Layout.fillWidth:true}Button{text:StreamingPreferences.microphoneMuteKeyboardShortcutDescription();onClicked:micMuteShortcutPopup.open()}}
+                            ComboBox{id:micCombo;Layout.fillWidth:true;Layout.maximumWidth:streamFunctionsScroll.availableWidth;model:micDeviceModel;textRole:"text";valueRole:"value";onActivated:{StreamingPreferences.micDevice=currentValue;StreamingPreferences.save();StreamingPreferences.requestStreamQuickAction("microphone")}}
+                            RowLayout{Layout.fillWidth:true;Label{text:qsTr("Microphone mute shortcut");Layout.fillWidth:true;elide:Text.ElideRight}Button{Layout.maximumWidth:220;text:StreamingPreferences.microphoneMuteKeyboardShortcutDescription();onClicked:micMuteShortcutPopup.open()}}
                             Label{text:qsTr("Keyboard mute shortcut uses the same global client microphone mute state as the DualSense mute button.");wrapMode:Text.Wrap;color:"#bbb"}
                             Item{Layout.fillHeight:true}
                         }
                     }
+                    Rectangle{Layout.fillHeight:true;width:1;color:"#555"}
+                    ScrollView{id:controllerStatusScroll;Layout.fillWidth:true;Layout.fillHeight:true;clip:true;contentWidth:availableWidth
+                      ColumnLayout{width:controllerStatusScroll.availableWidth;spacing:12
+                        Label{text:qsTr("Connected controllers");font.pixelSize:22;font.bold:true}
+                        Label{visible:StreamingPreferences.controllerStatus.length===0;text:qsTr("No controller status is available yet.");color:"#bbb"}
+                        Repeater{model:StreamingPreferences.controllerStatus
+                          delegate:Rectangle{Layout.fillWidth:true;implicitHeight:190;radius:10;color:"#373737";border.color:"#505050"
+                            ColumnLayout{anchors.fill:parent;anchors.margins:14;spacing:5
+                              Label{text:(modelData.name||qsTr("Controller"))+" — "+(modelData.type||qsTr("Unknown"));font.pixelSize:18;font.bold:true;Layout.fillWidth:true;elide:Text.ElideRight}
+                              Label{text:qsTr("Connection: %1").arg(modelData.connection||qsTr("Unknown"))}
+                              Label{text:qsTr("Battery: %1").arg(modelData.battery>=0?modelData.battery+"%":qsTr("Unknown"))}
+                              Label{text:qsTr("Charging state: %1").arg(modelData.batteryState||qsTr("Unknown"))}
+                              Label{text:qsTr("Headset: %1").arg(modelData.headsetState||qsTr("Not available"))}
+                              Label{text:qsTr("Microphone: %1").arg(modelData.microphone||qsTr("Not available"))}
+                            }
+                          }
+                        }
+                        Rectangle{Layout.fillWidth:true;height:1;color:"#555"}
+                        Label{text:qsTr("Battery warning");font.pixelSize:18;font.bold:true}
+                        CheckBox{text:qsTr("Show a low controller battery warning");checked:StreamingPreferences.controllerBatteryWarningEnabled;onToggled:{StreamingPreferences.controllerBatteryWarningEnabled=checked;StreamingPreferences.save()}}
+                        Label{text:qsTr("Warning threshold (%)")}
+                        RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;from:5;to:50;stepSize:5;value:StreamingPreferences.controllerBatteryWarningThreshold;onMoved:{StreamingPreferences.controllerBatteryWarningThreshold=Math.round(value);StreamingPreferences.save()}}SpinBox{Layout.preferredWidth:120;from:5;to:50;stepSize:5;value:StreamingPreferences.controllerBatteryWarningThreshold;onValueModified:{StreamingPreferences.controllerBatteryWarningThreshold=value;StreamingPreferences.save()}}}
+                        Item{Layout.fillHeight:true}
+                      }
+                    }
+                  }
                 }
                 Item {Layout.fillWidth:true;Layout.fillHeight:true;visible:root.selectedPage===1
-                    ScrollView{anchors.fill:parent;clip:true;contentWidth:availableWidth
-                        ColumnLayout{width:parent.width;spacing:14
+                    RowLayout{anchors.fill:parent;spacing:16
+                      ScrollView{id:dualSenseMainScroll;Layout.fillWidth:true;Layout.fillHeight:true;clip:true;contentWidth:availableWidth
+                        ColumnLayout{width:dualSenseMainScroll.availableWidth;spacing:14
                             Label{text:qsTr("DualSense Features");font.pixelSize:22;font.bold:true}
                             Label{text:qsTr("Gyroscope axis override");font.pixelSize:18;font.bold:true}
                             CheckBox{text:qsTr("Enable gyroscope axis override");checked:StreamingPreferences.gyroOverrideEnabled;onToggled:{StreamingPreferences.gyroOverrideEnabled=checked;StreamingPreferences.save()}}
@@ -251,7 +290,7 @@ Window {
                             }
                             Button{text:qsTr("Save gyroscope override");onClicked:StreamingPreferences.save()}
                             Rectangle{Layout.fillWidth:true;height:1;color:"#555"}
-                            Label{text:qsTr("Controller built-in speaker volume");font.pixelSize:18;font.bold:true}
+                            Label{text:StreamingPreferences.anyControllerHeadsetConnected?qsTr("Controller headphone volume"):qsTr("Controller built-in speaker volume");font.pixelSize:18;font.bold:true}
                             RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;from:0;to:100;stepSize:1;value:StreamingPreferences.dualSenseControllerVolume;onMoved:{StreamingPreferences.dualSenseControllerVolume=Math.round(value);StreamingPreferences.save();StreamingPreferences.requestStreamQuickAction("controllerVolume")}}SpinBox{from:0;to:100;value:StreamingPreferences.dualSenseControllerVolume;onValueModified:{StreamingPreferences.dualSenseControllerVolume=value;StreamingPreferences.save();StreamingPreferences.requestStreamQuickAction("controllerVolume")}}}
                             Rectangle{Layout.fillWidth:true;height:1;color:"#555"}
                             Label{text:qsTr("Trigger override");font.pixelSize:18;font.bold:true}
@@ -262,6 +301,42 @@ Window {
                             RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;from:1;to:100;value:StreamingPreferences.rightTriggerOverrideThreshold;onMoved:{StreamingPreferences.rightTriggerOverrideThreshold=Math.round(value);StreamingPreferences.save()}}SpinBox{from:1;to:100;value:StreamingPreferences.rightTriggerOverrideThreshold;onValueModified:{StreamingPreferences.rightTriggerOverrideThreshold=value;StreamingPreferences.save()}}}
                             Item{Layout.fillHeight:true}
                         }
+                      }
+                      Rectangle{Layout.fillHeight:true;width:1;color:"#555"}
+                      ScrollView{id:gyroStickScroll;Layout.fillWidth:true;Layout.fillHeight:true;clip:true;contentWidth:availableWidth
+                        ColumnLayout{width:Math.max(0,gyroStickScroll.availableWidth-16);spacing:12
+                          Label{text:qsTr("Gyro on right stick");font.pixelSize:22;font.bold:true}
+                          CheckBox{text:qsTr("Enable gyro on right stick");checked:StreamingPreferences.gyroStickEnabled;onToggled:{StreamingPreferences.gyroStickEnabled=checked;StreamingPreferences.save()}}
+                          Label{text:qsTr("Overall sensitivity")}
+                          RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;Layout.minimumWidth:40;from:10;to:500;stepSize:5;value:StreamingPreferences.gyroStickSensitivity;onMoved:{StreamingPreferences.gyroStickSensitivity=Math.round(value);StreamingPreferences.save()}}SpinBox{Layout.preferredWidth:140;Layout.minimumWidth:140;Layout.maximumWidth:140;from:10;to:500;value:StreamingPreferences.gyroStickSensitivity;onValueModified:{StreamingPreferences.gyroStickSensitivity=value;StreamingPreferences.save()}}}
+                          Repeater{model:[{n:"X",p:"gyroStickXSensitivity",i:"gyroStickXInverted"},{n:"Y",p:"gyroStickYSensitivity",i:"gyroStickYInverted"},{n:"Z",p:"gyroStickZSensitivity",i:"gyroStickZInverted"}]
+                            delegate:ColumnLayout{Layout.fillWidth:true;Label{text:modelData.n+qsTr(" axis sensitivity")}
+                              RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;Layout.minimumWidth:40;from:0;to:500;stepSize:5;value:StreamingPreferences[modelData.p];onMoved:{StreamingPreferences[modelData.p]=Math.round(value);StreamingPreferences.save()}}SpinBox{Layout.preferredWidth:140;Layout.minimumWidth:140;Layout.maximumWidth:140;from:0;to:500;value:StreamingPreferences[modelData.p];onValueModified:{StreamingPreferences[modelData.p]=value;StreamingPreferences.save()}}}
+                              CheckBox{text:qsTr("Invert %1 axis").arg(modelData.n);checked:StreamingPreferences[modelData.i];onToggled:{StreamingPreferences[modelData.i]=checked;StreamingPreferences.save()}}
+                            }}
+                          Label{Layout.fillWidth:true;wrapMode:Text.Wrap;text:qsTr("Stick deadzone compensation (%) (increase if small movements are not detected)")}
+                          RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;Layout.minimumWidth:40;from:0;to:40;value:StreamingPreferences.gyroStickDeadzone;onMoved:{StreamingPreferences.gyroStickDeadzone=Math.round(value);StreamingPreferences.save()}}SpinBox{Layout.preferredWidth:140;Layout.minimumWidth:140;Layout.maximumWidth:140;from:0;to:40;value:StreamingPreferences.gyroStickDeadzone;onValueModified:{StreamingPreferences.gyroStickDeadzone=value;StreamingPreferences.save()}}}
+                          CheckBox{text:qsTr("Smooth gyro stick output");checked:StreamingPreferences.gyroStickSmoothing;onToggled:{StreamingPreferences.gyroStickSmoothing=checked;StreamingPreferences.save()}}
+                          CheckBox{text:qsTr("Only active while a selected button is held");checked:StreamingPreferences.gyroStickHoldMode;onToggled:{StreamingPreferences.gyroStickHoldMode=checked;StreamingPreferences.save()}}
+                          ColumnLayout{Layout.fillWidth:true;enabled:StreamingPreferences.gyroStickHoldMode;opacity:enabled?1:0.45;Label{text:qsTr("Activation buttons")}Button{Layout.fillWidth:true;text:root.shortcutDescription(StreamingPreferences.gyroStickActivationButtons," / ");onClicked:gyroStickActivationPopup.openFor("activation")}}
+                          CheckBox{text:qsTr("Use precision sensitivity while a selected button is held");checked:StreamingPreferences.gyroStickPrecisionEnabled;onToggled:{StreamingPreferences.gyroStickPrecisionEnabled=checked;StreamingPreferences.save()}}
+                          ColumnLayout{Layout.fillWidth:true;enabled:StreamingPreferences.gyroStickPrecisionEnabled;opacity:enabled?1:0.45
+                            Label{text:qsTr("Precision sensitivity (%)")}
+                            RowLayout{Layout.fillWidth:true;Slider{Layout.fillWidth:true;Layout.minimumWidth:40;from:10;to:500;stepSize:5;value:StreamingPreferences.gyroStickPrecisionSensitivity;onMoved:{StreamingPreferences.gyroStickPrecisionSensitivity=Math.round(value);StreamingPreferences.save()}}SpinBox{Layout.preferredWidth:140;Layout.minimumWidth:140;Layout.maximumWidth:140;from:10;to:500;stepSize:5;value:StreamingPreferences.gyroStickPrecisionSensitivity;onValueModified:{StreamingPreferences.gyroStickPrecisionSensitivity=value;StreamingPreferences.save()}}}
+                            Label{text:qsTr("Precision buttons")}
+                            Button{Layout.fillWidth:true;text:root.shortcutDescription(StreamingPreferences.gyroStickPrecisionButtons," / ");onClicked:gyroStickActivationPopup.openFor("precision")}
+                          }
+                          Label{text:qsTr("Toggle shortcut")}
+                          Button{Layout.fillWidth:true;text:root.shortcutDescription(StreamingPreferences.gyroStickShortcut);onClicked:gyroStickShortcutPopup.openForCurrent()}
+                          Rectangle{Layout.fillWidth:true;height:1;color:"#555"}
+                          Label{text:qsTr("Gyro stick profiles");font.pixelSize:18;font.bold:true}
+                          ComboBox{id:gyroStickProfileCombo;Layout.fillWidth:true;model:StreamingPreferences.gyroStickProfileNames;currentIndex:StreamingPreferences.gyroStickActiveProfileIndex}
+                          RowLayout{Layout.fillWidth:true;Button{Layout.fillWidth:true;text:qsTr("Load");enabled:gyroStickProfileCombo.currentIndex>=0;onClicked:StreamingPreferences.loadGyroStickProfile(gyroStickProfileCombo.currentIndex)}Button{Layout.fillWidth:true;text:qsTr("Delete");enabled:gyroStickProfileCombo.currentIndex>=0;onClicked:StreamingPreferences.deleteGyroStickProfile(gyroStickProfileCombo.currentIndex)}}
+                          GridLayout{Layout.fillWidth:true;columns:2;Button{Layout.fillWidth:true;text:qsTr("Save new");onClicked:gyroStickProfilePopup.open()}Button{Layout.fillWidth:true;text:qsTr("Save current");enabled:gyroStickProfileCombo.currentIndex>=0;onClicked:StreamingPreferences.updateGyroStickProfile(gyroStickProfileCombo.currentIndex)}Button{Layout.fillWidth:true;text:qsTr("Import");onClicked:gyroStickImportDialog.open()}Button{Layout.fillWidth:true;text:qsTr("Export");enabled:gyroStickProfileCombo.currentIndex>=0;onClicked:gyroStickExportDialog.open()}}
+                          Label{Layout.fillWidth:true;wrapMode:Text.Wrap;color:"#bbb";text:qsTr("Gyro output is added to the physical right stick. The shortcut toggles this feature without consuming normal motion forwarding.")}
+                          Item{Layout.fillHeight:true}
+                        }
+                      }
                     }
                 }
             }
@@ -308,6 +383,38 @@ Window {
         }
     }
     Popup {
+        id:gyroStickShortcutPopup;modal:true;dim:true;focus:true;width:600;height:360;x:(root.width-width)/2;y:(root.height-height)/2;closePolicy:Popup.CloseOnEscape
+        property string selection:""
+        function openForCurrent(){selection=StreamingPreferences.gyroStickShortcut;open()}
+        function selected(i){return selection.split(",").indexOf(String(i))>=0}
+        function toggle(i,on){var a=selection.length?selection.split(","):[];var s=String(i);var p=a.indexOf(s);if(on&&p<0)a.push(s);if(!on&&p>=0)a.splice(p,1);selection=a.join(",")}
+        Overlay.modal:Rectangle{color:"#99000000"} background:Rectangle{radius:14;color:"#303030";border.color:"#555"}
+        contentItem:ColumnLayout{RowLayout{Layout.fillWidth:true;Label{text:qsTr("Gyro stick toggle shortcut");font.pixelSize:20;font.bold:true;Layout.fillWidth:true}Button{text:"✕";flat:true;onClicked:gyroStickShortcutPopup.close()}}
+          Label{text:qsTr("Select at least two controller buttons.");color:"#bbb"}
+          GridLayout{columns:3;Layout.fillWidth:true;Repeater{model:[{i:0,n:"A / Cross"},{i:1,n:"B / Circle"},{i:2,n:"X / Square"},{i:3,n:"Y / Triangle"},{i:4,n:"Back / Share"},{i:5,n:"Guide / PS"},{i:6,n:"Start / Options"},{i:7,n:"L3"},{i:8,n:"R3"},{i:9,n:"LB"},{i:10,n:"RB"},{i:20,n:"Touchpad"}];delegate:CheckBox{text:modelData.n;checked:gyroStickShortcutPopup.selected(modelData.i);onToggled:gyroStickShortcutPopup.toggle(modelData.i,checked)}}}
+          Item{Layout.fillHeight:true}RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:gyroStickShortcutPopup.close()}Button{text:qsTr("Apply");enabled:gyroStickShortcutPopup.selection.split(",").filter(function(x){return x.length>0}).length>=2;onClicked:{StreamingPreferences.gyroStickShortcut=gyroStickShortcutPopup.selection;StreamingPreferences.save();gyroStickShortcutPopup.close()}}}}
+    }
+    Popup {
+      id:gyroStickActivationPopup;modal:true;dim:true;focus:true;width:620;height:420;x:(root.width-width)/2;y:(root.height-height)/2;closePolicy:Popup.CloseOnEscape
+      property string mode:"activation";property string selection:""
+      function openFor(value){mode=value;selection=value==="activation"?StreamingPreferences.gyroStickActivationButtons:StreamingPreferences.gyroStickPrecisionButtons;open()}
+      function selected(i){return selection.split(",").indexOf(String(i))>=0}
+      function toggle(i,on){var a=selection.length?selection.split(","):[];var s=String(i);var p=a.indexOf(s);if(on&&p<0)a.push(s);if(!on&&p>=0)a.splice(p,1);selection=a.join(",")}
+      Overlay.modal:Rectangle{color:"#99000000"} background:Rectangle{radius:14;color:"#303030";border.color:"#555"}
+      contentItem:ColumnLayout{RowLayout{Layout.fillWidth:true;Label{text:gyroStickActivationPopup.mode==="activation"?qsTr("Gyro stick activation buttons"):qsTr("Precision sensitivity buttons");font.pixelSize:20;font.bold:true;Layout.fillWidth:true}Button{text:"✕";flat:true;onClicked:gyroStickActivationPopup.close()}}
+        Label{Layout.fillWidth:true;wrapMode:Text.Wrap;color:"#bbb";text:qsTr("Holding any one of the selected buttons activates this behavior. Normal controller input is still forwarded.")}
+        GridLayout{columns:3;Layout.fillWidth:true;Repeater{model:[{i:0,n:"A / Cross"},{i:1,n:"B / Circle"},{i:2,n:"X / Square"},{i:3,n:"Y / Triangle"},{i:4,n:"Back / Share"},{i:5,n:"Guide / PS"},{i:6,n:"Start / Options"},{i:7,n:"L3"},{i:8,n:"R3"},{i:9,n:"LB"},{i:10,n:"RB"},{i:15,n:"Mute"},{i:20,n:"Touchpad"},{i:100,n:"Left Trigger"},{i:101,n:"Right Trigger"}];delegate:CheckBox{text:modelData.n;checked:gyroStickActivationPopup.selected(modelData.i);onToggled:gyroStickActivationPopup.toggle(modelData.i,checked)}}}
+        Item{Layout.fillHeight:true}RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:gyroStickActivationPopup.close()}Button{text:qsTr("Apply");enabled:gyroStickActivationPopup.selection.length>0;onClicked:{if(gyroStickActivationPopup.mode==="activation")StreamingPreferences.gyroStickActivationButtons=gyroStickActivationPopup.selection;else StreamingPreferences.gyroStickPrecisionButtons=gyroStickActivationPopup.selection;StreamingPreferences.save();gyroStickActivationPopup.close()}}}
+      }
+    }
+    Popup{id:gyroStickProfilePopup;modal:true;dim:true;width:460;height:210;x:(root.width-width)/2;y:(root.height-height)/2;closePolicy:Popup.CloseOnEscape
+      Overlay.modal:Rectangle{color:"#99000000"}
+      background:Rectangle{radius:14;color:"#303030";border.color:"#555"}
+      contentItem:ColumnLayout{RowLayout{Layout.fillWidth:true;Label{text:qsTr("Save gyro stick profile");font.pixelSize:20;font.bold:true;Layout.fillWidth:true}Button{text:"✕";flat:true;onClicked:gyroStickProfilePopup.close()}}TextField{id:gyroStickProfileName;Layout.fillWidth:true;placeholderText:qsTr("Profile name")}Item{Layout.fillHeight:true}RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:gyroStickProfilePopup.close()}Button{text:qsTr("Save");enabled:gyroStickProfileName.text.trim().length>0;onClicked:{StreamingPreferences.saveGyroStickProfile(gyroStickProfileName.text);gyroStickProfileName.text="";gyroStickProfilePopup.close()}}}}
+    }
+    FileDialog{id:gyroStickImportDialog;fileMode:FileDialog.OpenFile;nameFilters:["JSON (*.json)"];onAccepted:StreamingPreferences.importGyroStickProfile(selectedFile)}
+    FileDialog{id:gyroStickExportDialog;fileMode:FileDialog.SaveFile;defaultSuffix:"json";nameFilters:["JSON (*.json)"];onAccepted:StreamingPreferences.exportGyroStickProfile(gyroStickProfileCombo.currentIndex,selectedFile)}
+    Popup {
         id: mappingPopup; modal:true; dim:true; focus:true; width:500; height:330; x:(root.width-width)/2; y:(root.height-height)/2; closePolicy:Popup.CloseOnEscape
         property string sourceId:""; property bool axis:false
         function openFor(source,isAxis){sourceId=source;axis=isAxis;actionCombo.currentIndex=0;open()}
@@ -331,7 +438,7 @@ Window {
         id:flickPopup;modal:true;dim:true;width:480;height:230;x:(root.width-width)/2;y:(root.height-height)/2;closePolicy:Popup.CloseOnEscape;property string sourceId:""
         Overlay.modal:Rectangle{color:"#99000000"}
         background:Rectangle{radius:14;color:"#303030";border.color:"#555"}
-        contentItem:ColumnLayout{RowLayout{Layout.fillWidth:true;Label{text:qsTr("Directed flick");font.pixelSize:20;font.bold:true;Layout.fillWidth:true} Button{text:"✕";flat:true;onClicked:flickPopup.close()}} ComboBox{id:flickDir;Layout.fillWidth:true;model:[qsTr("Left"),qsTr("Right"),qsTr("Up"),qsTr("Down")]} SpinBox{id:flickDistance;Layout.fillWidth:true;editable:true;from:50;to:4000;stepSize:50;value:900} RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:flickPopup.close()} Button{text:qsTr("Apply");onClicked:{StreamingPreferences.setControllerKbmAction(flickPopup.sourceId,"directed_flick:"+["left","right","up","down"][flickDir.currentIndex]+":"+flickDistance.value);flickPopup.close()}}}}
+        contentItem:ColumnLayout{RowLayout{Layout.fillWidth:true;Label{text:qsTr("Directed flick");font.pixelSize:20;font.bold:true;Layout.fillWidth:true} Button{text:"✕";flat:true;onClicked:flickPopup.close()}} ComboBox{id:flickDir;Layout.fillWidth:true;model:[qsTr("Left"),qsTr("Right"),qsTr("Up"),qsTr("Down")]} SpinBox{id:flickDistance;Layout.fillWidth:true;editable:true;from:50;to:4000;stepSize:50;value:900} RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:flickPopup.close()} Button{text:qsTr("Apply");onClicked:{var a="directed_flick:"+["left","right","up","down"][flickDir.currentIndex]+":"+flickDistance.value;StreamingPreferences.setControllerKbmAction(flickPopup.sourceId,a);flickPopup.close()}}}}
     }
     Popup {
         id:presetPopup;modal:true;dim:true;width:460;height:210;x:(root.width-width)/2;y:(root.height-height)/2;closePolicy:Popup.CloseOnEscape

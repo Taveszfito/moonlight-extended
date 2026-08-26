@@ -8,6 +8,7 @@
 #include <QtGlobal>
 #include <QDir>
 #include <QGuiApplication>
+#include <QSettings>
 
 SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, int streamHeight)
     : m_MultiController(prefs.multiController),
@@ -48,6 +49,21 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_QuickMenuKeyboardModifiers(prefs.quickMenuKeyboardModifiers),
       m_QuickMenuKeyboardLatched(false),
       m_MicrophoneMuteKeyboardLatched(false),
+      m_GyroStickEnabled(prefs.gyroStickEnabled),
+      m_GyroStickSensitivity(prefs.gyroStickSensitivity),
+      m_GyroStickAxisSensitivity{prefs.gyroStickXSensitivity, prefs.gyroStickYSensitivity, prefs.gyroStickZSensitivity},
+      m_GyroStickAxisInverted{prefs.gyroStickXInverted, prefs.gyroStickYInverted, prefs.gyroStickZInverted},
+      m_GyroStickSmoothing(prefs.gyroStickSmoothing),
+      m_GyroStickDeadzone(prefs.gyroStickDeadzone),
+      m_GyroStickShortcutMask(0),
+      m_GyroStickShortcutLatched(false),
+      m_GyroStickHoldMode(prefs.gyroStickHoldMode),
+      m_GyroStickActivationMask(0),
+      m_GyroStickActivationTriggers{false,false},
+      m_GyroStickPrecisionEnabled(prefs.gyroStickPrecisionEnabled),
+      m_GyroStickPrecisionSensitivity(prefs.gyroStickPrecisionSensitivity),
+      m_GyroStickPrecisionMask(0),
+      m_GyroStickPrecisionTriggers{false,false},
       m_MouseWasInVideoRegion(false),
       m_PendingMouseButtonsAllUpOnVideoRegionLeave(false),
       m_PointerRegionLockActive(false),
@@ -70,6 +86,9 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_DragButton(0),
       m_NumFingersDown(0)
 {
+    for (const QString& button : prefs.gyroStickShortcut.split(',', Qt::SkipEmptyParts)) { bool ok=false; int index=button.toInt(&ok); if(ok&&index>=0&&index<32)m_GyroStickShortcutMask|=(1u<<index); }
+    auto parseGyroButtons=[](const QString& value,uint32_t& mask,bool triggers[2]){for(const QString& button:value.split(',',Qt::SkipEmptyParts)){bool ok=false;int index=button.toInt(&ok);if(!ok)continue;if(index>=0&&index<32)mask|=(1u<<index);else if(index==100)triggers[0]=true;else if(index==101)triggers[1]=true;}};
+    parseGyroButtons(prefs.gyroStickActivationButtons,m_GyroStickActivationMask,m_GyroStickActivationTriggers);parseGyroButtons(prefs.gyroStickPrecisionButtons,m_GyroStickPrecisionMask,m_GyroStickPrecisionTriggers);
     m_ControllerKbmTriggerThresholds[0] = prefs.controllerKbmLeftTriggerThreshold;
     m_ControllerKbmTriggerThresholds[1] = prefs.controllerKbmRightTriggerThreshold;
     m_ControllerKbmTriggerBehaviors[0] = prefs.controllerKbmLeftTriggerBehavior;
@@ -269,6 +288,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_GamepadMask = getAttachedGamepadMask();
 
     SDL_zero(m_GamepadState);
+    QSettings statusSettings;statusSettings.remove(QStringLiteral("livecontrollerstatus"));statusSettings.sync();
     SDL_zero(m_LastTouchDownEvent);
     SDL_zero(m_LastTouchUpEvent);
     SDL_zero(m_TouchDownEvent);

@@ -173,6 +173,8 @@ private:
     void notifyMouseEmulationMode(bool enabled);
     void notifyMicrophoneMute(bool muted);
     void notifyControllerKbmGyro(bool enabled);
+    void notifyGyroStick(bool enabled);
+    void notifyControllerBatteryLow(int percentage);
 
     void updateOptimalWindowDisplayMode();
 
