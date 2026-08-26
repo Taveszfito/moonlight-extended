@@ -269,6 +269,10 @@ private:
     bool m_ControllerKbmGyroHoldActive;
     uint32_t m_ControllerKbmGyroActivationMask;
     bool m_ControllerKbmGyroActivationTriggers[2];
+    bool m_ControllerKbmGyroPrecisionEnabled;
+    int m_ControllerKbmGyroPrecisionSensitivity;
+    uint32_t m_ControllerKbmGyroPrecisionMask;
+    bool m_ControllerKbmGyroPrecisionTriggers[2];
     int m_ControllerKbmGyroSensitivity;
     int m_ControllerKbmGyroAxisSensitivity[3];
     bool m_ControllerKbmGyroAxisInverted[3];

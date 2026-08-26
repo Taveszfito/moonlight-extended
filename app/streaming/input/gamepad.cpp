@@ -309,6 +309,17 @@ void SdlInputHandler::syncControllerKbmSettings()
         else if (index == 100) m_ControllerKbmGyroActivationTriggers[0] = true;
         else if (index == 101) m_ControllerKbmGyroActivationTriggers[1] = true;
     }
+    m_ControllerKbmGyroPrecisionEnabled = settings.value(QStringLiteral("controllerkbmgyroprecisionenabled"), false).toBool();
+    m_ControllerKbmGyroPrecisionSensitivity = settings.value(QStringLiteral("controllerkbmgyroprecisionsensitivity"), 40).toInt();
+    m_ControllerKbmGyroPrecisionMask = 0;
+    m_ControllerKbmGyroPrecisionTriggers[0] = m_ControllerKbmGyroPrecisionTriggers[1] = false;
+    const QString precisionButtons = settings.value(QStringLiteral("controllerkbmgyroprecisionbuttons"), QStringLiteral("100")).toString();
+    for (const QString& button : precisionButtons.split(',', Qt::SkipEmptyParts)) {
+        bool ok = false; const int index = button.toInt(&ok); if (!ok) continue;
+        if (index >= 0 && index < 32) m_ControllerKbmGyroPrecisionMask |= (1u << index);
+        else if (index == 100) m_ControllerKbmGyroPrecisionTriggers[0] = true;
+        else if (index == 101) m_ControllerKbmGyroPrecisionTriggers[1] = true;
+    }
     m_ControllerKbmGyroSensitivity = settings.value(QStringLiteral("controllerkbmgyrosensitivity"), 100).toInt();
     m_ControllerKbmGyroAxisSensitivity[0]=settings.value(QStringLiteral("controllerkbmgyroxsensitivity"),100).toInt(); m_ControllerKbmGyroAxisSensitivity[1]=settings.value(QStringLiteral("controllerkbmgyroysensitivity"),100).toInt(); m_ControllerKbmGyroAxisSensitivity[2]=settings.value(QStringLiteral("controllerkbmgyrozsensitivity"),100).toInt();
     m_ControllerKbmGyroAxisInverted[0]=settings.value(QStringLiteral("controllerkbmgyroxinverted"),false).toBool(); m_ControllerKbmGyroAxisInverted[1]=settings.value(QStringLiteral("controllerkbmgyroyinverted"),false).toBool(); m_ControllerKbmGyroAxisInverted[2]=settings.value(QStringLiteral("controllerkbmgyrozinverted"),false).toBool();
@@ -1077,7 +1088,12 @@ void SdlInputHandler::handleControllerSensorEvent(SDL_ControllerSensorEvent* eve
                 float axis[3]={event->data[0],event->data[1],event->data[2]};
                 for(int i=0;i<3;i++){if(m_ControllerKbmGyroAxisInverted[i])axis[i]=-axis[i];axis[i]*=m_ControllerKbmGyroAxisSensitivity[i]/100.0f;}
                 const float yaw = std::abs(axis[1]) >= std::abs(axis[2]) ? axis[1] : axis[2];
-                const float scale = 57.2957795f * dt;
+                const bool precisionActive = m_ControllerKbmGyroPrecisionEnabled &&
+                    (((m_ControllerKbmButtonsDown & m_ControllerKbmGyroPrecisionMask) != 0) ||
+                     (m_ControllerKbmGyroPrecisionTriggers[0] && state->lt >= 15 * 255 / 100) ||
+                     (m_ControllerKbmGyroPrecisionTriggers[1] && state->rt >= 15 * 255 / 100));
+                const float precisionScale = precisionActive ? m_ControllerKbmGyroPrecisionSensitivity / 100.0f : 1.0f;
+                const float scale = 57.2957795f * dt * (m_ControllerKbmGyroSensitivity / 100.0f) * precisionScale;
                 m_ControllerKbmGyroRemainderX += yaw * scale;
                 m_ControllerKbmGyroRemainderY += axis[0] * scale;
                 const int dx = static_cast<int>(m_ControllerKbmGyroRemainderX);

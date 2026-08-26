@@ -97,6 +97,9 @@
 #define SER_CONTROLLERKBMGYROSHORTCUT "controllerkbmgyroshortcut"
 #define SER_CONTROLLERKBMGYROHOLDMODE "controllerkbmgyroholdmode"
 #define SER_CONTROLLERKBMGYROACTIVATIONBUTTONS "controllerkbmgyroactivationbuttons"
+#define SER_CONTROLLERKBMGYROPRECISIONENABLED "controllerkbmgyroprecisionenabled"
+#define SER_CONTROLLERKBMGYROPRECISIONSENSITIVITY "controllerkbmgyroprecisionsensitivity"
+#define SER_CONTROLLERKBMGYROPRECISIONBUTTONS "controllerkbmgyroprecisionbuttons"
 #define SER_DUALSENSECONTROLLERVOLUME "dualsensecontrollervolume"
 #define SER_TRIGGEROVERRIDEENABLED "triggeroverrideenabled"
 #define SER_LEFTTRIGGEROVERRIDETHRESHOLD "lefttriggeroverridethreshold"
@@ -268,6 +271,9 @@ void StreamingPreferences::reload()
     controllerKbmGyroShortcut = settings.value(SER_CONTROLLERKBMGYROSHORTCUT, QStringLiteral("7,8")).toString();
     controllerKbmGyroHoldMode = settings.value(SER_CONTROLLERKBMGYROHOLDMODE, false).toBool();
     controllerKbmGyroActivationButtons = settings.value(SER_CONTROLLERKBMGYROACTIVATIONBUTTONS, QString()).toString();
+    controllerKbmGyroPrecisionEnabled = settings.value(SER_CONTROLLERKBMGYROPRECISIONENABLED, false).toBool();
+    controllerKbmGyroPrecisionSensitivity = qBound(10, settings.value(SER_CONTROLLERKBMGYROPRECISIONSENSITIVITY, 40).toInt(), 100);
+    controllerKbmGyroPrecisionButtons = settings.value(SER_CONTROLLERKBMGYROPRECISIONBUTTONS, QStringLiteral("100")).toString();
     dualSenseControllerVolume=settings.value(SER_DUALSENSECONTROLLERVOLUME,100).toInt(); triggerOverrideEnabled=settings.value(SER_TRIGGEROVERRIDEENABLED,false).toBool(); leftTriggerOverrideThreshold=settings.value(SER_LEFTTRIGGEROVERRIDETHRESHOLD,50).toInt(); rightTriggerOverrideThreshold=settings.value(SER_RIGHTTRIGGEROVERRIDETHRESHOLD,50).toInt();
     controllerKbmGyroXSensitivity = qBound(10, settings.value(SER_CONTROLLERKBMGYROXSENSITIVITY, 100).toInt(), 500);
     controllerKbmGyroYSensitivity = qBound(10, settings.value(SER_CONTROLLERKBMGYROYSENSITIVITY, 100).toInt(), 500);
@@ -542,6 +548,9 @@ void StreamingPreferences::save()
     settings.setValue(SER_CONTROLLERKBMGYROSHORTCUT, controllerKbmGyroShortcut);
     settings.setValue(SER_CONTROLLERKBMGYROHOLDMODE, controllerKbmGyroHoldMode);
     settings.setValue(SER_CONTROLLERKBMGYROACTIVATIONBUTTONS, controllerKbmGyroActivationButtons);
+    settings.setValue(SER_CONTROLLERKBMGYROPRECISIONENABLED, controllerKbmGyroPrecisionEnabled);
+    settings.setValue(SER_CONTROLLERKBMGYROPRECISIONSENSITIVITY, controllerKbmGyroPrecisionSensitivity);
+    settings.setValue(SER_CONTROLLERKBMGYROPRECISIONBUTTONS, controllerKbmGyroPrecisionButtons);
     settings.setValue(SER_DUALSENSECONTROLLERVOLUME,dualSenseControllerVolume);settings.setValue(SER_TRIGGEROVERRIDEENABLED,triggerOverrideEnabled);settings.setValue(SER_LEFTTRIGGEROVERRIDETHRESHOLD,leftTriggerOverrideThreshold);settings.setValue(SER_RIGHTTRIGGEROVERRIDETHRESHOLD,rightTriggerOverrideThreshold);
     settings.setValue(SER_CONTROLLERKBMGYROXSENSITIVITY, controllerKbmGyroXSensitivity); settings.setValue(SER_CONTROLLERKBMGYROYSENSITIVITY, controllerKbmGyroYSensitivity); settings.setValue(SER_CONTROLLERKBMGYROZSENSITIVITY, controllerKbmGyroZSensitivity);
     settings.setValue(SER_CONTROLLERKBMGYROXINVERTED, controllerKbmGyroXInverted); settings.setValue(SER_CONTROLLERKBMGYROYINVERTED, controllerKbmGyroYInverted); settings.setValue(SER_CONTROLLERKBMGYROZINVERTED, controllerKbmGyroZInverted);
@@ -794,6 +803,9 @@ void StreamingPreferences::persistControllerKbmData()
     settings.setValue(SER_CONTROLLERKBMGYROSHORTCUT, controllerKbmGyroShortcut);
     settings.setValue(SER_CONTROLLERKBMGYROHOLDMODE, controllerKbmGyroHoldMode);
     settings.setValue(SER_CONTROLLERKBMGYROACTIVATIONBUTTONS, controllerKbmGyroActivationButtons);
+    settings.setValue(SER_CONTROLLERKBMGYROPRECISIONENABLED, controllerKbmGyroPrecisionEnabled);
+    settings.setValue(SER_CONTROLLERKBMGYROPRECISIONSENSITIVITY, controllerKbmGyroPrecisionSensitivity);
+    settings.setValue(SER_CONTROLLERKBMGYROPRECISIONBUTTONS, controllerKbmGyroPrecisionButtons);
     settings.setValue(SER_CONTROLLERKBMGYROXSENSITIVITY, controllerKbmGyroXSensitivity); settings.setValue(SER_CONTROLLERKBMGYROYSENSITIVITY, controllerKbmGyroYSensitivity); settings.setValue(SER_CONTROLLERKBMGYROZSENSITIVITY, controllerKbmGyroZSensitivity);
     settings.setValue(SER_CONTROLLERKBMGYROXINVERTED, controllerKbmGyroXInverted); settings.setValue(SER_CONTROLLERKBMGYROYINVERTED, controllerKbmGyroYInverted); settings.setValue(SER_CONTROLLERKBMGYROZINVERTED, controllerKbmGyroZInverted);
     settings.setValue(SER_CONTROLLERKBMMAPPINGS,
@@ -869,6 +881,9 @@ static QVariantMap currentControllerKbmPresetData(const StreamingPreferences* pr
     preset.insert(QStringLiteral("gyroShortcut"), prefs->controllerKbmGyroShortcut);
     preset.insert(QStringLiteral("gyroHoldMode"), prefs->controllerKbmGyroHoldMode);
     preset.insert(QStringLiteral("gyroActivationButtons"), prefs->controllerKbmGyroActivationButtons);
+    preset.insert(QStringLiteral("gyroPrecisionEnabled"), prefs->controllerKbmGyroPrecisionEnabled);
+    preset.insert(QStringLiteral("gyroPrecisionSensitivity"), prefs->controllerKbmGyroPrecisionSensitivity);
+    preset.insert(QStringLiteral("gyroPrecisionButtons"), prefs->controllerKbmGyroPrecisionButtons);
     preset.insert(QStringLiteral("gyroXSensitivity"), prefs->controllerKbmGyroXSensitivity); preset.insert(QStringLiteral("gyroYSensitivity"), prefs->controllerKbmGyroYSensitivity); preset.insert(QStringLiteral("gyroZSensitivity"), prefs->controllerKbmGyroZSensitivity);
     preset.insert(QStringLiteral("gyroXInverted"), prefs->controllerKbmGyroXInverted); preset.insert(QStringLiteral("gyroYInverted"), prefs->controllerKbmGyroYInverted); preset.insert(QStringLiteral("gyroZInverted"), prefs->controllerKbmGyroZInverted);
     return preset;
@@ -928,6 +943,9 @@ bool StreamingPreferences::loadControllerKbmPreset(int index)
     controllerKbmGyroShortcut = preset.value(QStringLiteral("gyroShortcut"), controllerKbmGyroShortcut).toString();
     controllerKbmGyroHoldMode = preset.value(QStringLiteral("gyroHoldMode"), controllerKbmGyroHoldMode).toBool();
     controllerKbmGyroActivationButtons = preset.value(QStringLiteral("gyroActivationButtons"), controllerKbmGyroActivationButtons).toString();
+    controllerKbmGyroPrecisionEnabled = preset.value(QStringLiteral("gyroPrecisionEnabled"), controllerKbmGyroPrecisionEnabled).toBool();
+    controllerKbmGyroPrecisionSensitivity = preset.value(QStringLiteral("gyroPrecisionSensitivity"), controllerKbmGyroPrecisionSensitivity).toInt();
+    controllerKbmGyroPrecisionButtons = preset.value(QStringLiteral("gyroPrecisionButtons"), controllerKbmGyroPrecisionButtons).toString();
     controllerKbmGyroXSensitivity = preset.value(QStringLiteral("gyroXSensitivity"), controllerKbmGyroXSensitivity).toInt(); controllerKbmGyroYSensitivity = preset.value(QStringLiteral("gyroYSensitivity"), controllerKbmGyroYSensitivity).toInt(); controllerKbmGyroZSensitivity = preset.value(QStringLiteral("gyroZSensitivity"), controllerKbmGyroZSensitivity).toInt();
     controllerKbmGyroXInverted = preset.value(QStringLiteral("gyroXInverted"), controllerKbmGyroXInverted).toBool(); controllerKbmGyroYInverted = preset.value(QStringLiteral("gyroYInverted"), controllerKbmGyroYInverted).toBool(); controllerKbmGyroZInverted = preset.value(QStringLiteral("gyroZInverted"), controllerKbmGyroZInverted).toBool();
     controllerKbmActivePresetIndex = index;
@@ -963,7 +981,7 @@ bool StreamingPreferences::exportControllerKbmPreset(int index, const QUrl& dest
     const QStringList fields = {QStringLiteral("stickSpeed"), QStringLiteral("continuousStickMouse"),
         QStringLiteral("leftTriggerThreshold"), QStringLiteral("leftTriggerBehavior"), QStringLiteral("leftTriggerRepeatRate"),
         QStringLiteral("rightTriggerThreshold"), QStringLiteral("rightTriggerBehavior"), QStringLiteral("rightTriggerRepeatRate"),
-        QStringLiteral("gyroEnabled"), QStringLiteral("gyroSensitivity"), QStringLiteral("gyroShortcut"), QStringLiteral("gyroHoldMode"), QStringLiteral("gyroActivationButtons"),
+        QStringLiteral("gyroEnabled"), QStringLiteral("gyroSensitivity"), QStringLiteral("gyroShortcut"), QStringLiteral("gyroHoldMode"), QStringLiteral("gyroActivationButtons"), QStringLiteral("gyroPrecisionEnabled"), QStringLiteral("gyroPrecisionSensitivity"), QStringLiteral("gyroPrecisionButtons"),
         QStringLiteral("gyroXSensitivity"),QStringLiteral("gyroYSensitivity"),QStringLiteral("gyroZSensitivity"),QStringLiteral("gyroXInverted"),QStringLiteral("gyroYInverted"),QStringLiteral("gyroZInverted")};
     for (const QString& field : fields)
         if (preset.contains(field)) root.insert(field, QJsonValue::fromVariant(preset.value(field)));
@@ -996,7 +1014,7 @@ bool StreamingPreferences::importControllerKbmPreset(const QUrl& source)
     const QStringList fields = {QStringLiteral("stickSpeed"), QStringLiteral("continuousStickMouse"),
         QStringLiteral("leftTriggerThreshold"), QStringLiteral("leftTriggerBehavior"), QStringLiteral("leftTriggerRepeatRate"),
         QStringLiteral("rightTriggerThreshold"), QStringLiteral("rightTriggerBehavior"), QStringLiteral("rightTriggerRepeatRate"),
-        QStringLiteral("gyroEnabled"), QStringLiteral("gyroSensitivity"), QStringLiteral("gyroShortcut"), QStringLiteral("gyroHoldMode"), QStringLiteral("gyroActivationButtons"),
+        QStringLiteral("gyroEnabled"), QStringLiteral("gyroSensitivity"), QStringLiteral("gyroShortcut"), QStringLiteral("gyroHoldMode"), QStringLiteral("gyroActivationButtons"), QStringLiteral("gyroPrecisionEnabled"), QStringLiteral("gyroPrecisionSensitivity"), QStringLiteral("gyroPrecisionButtons"),
         QStringLiteral("gyroXSensitivity"),QStringLiteral("gyroYSensitivity"),QStringLiteral("gyroZSensitivity"),QStringLiteral("gyroXInverted"),QStringLiteral("gyroYInverted"),QStringLiteral("gyroZInverted")};
     for (const QString& field : fields)
         if (root.contains(field)) preset.insert(field, root.value(field).toVariant());

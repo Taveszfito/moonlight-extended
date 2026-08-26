@@ -178,6 +178,8 @@ Window {
                                 Label { text:qsTr("Gyro mouse"); font.pixelSize:18; font.bold:true }
                                 CheckBox { text:qsTr("Gyro mouse enabled"); checked:StreamingPreferences.controllerKbmGyroEnabled; onToggled:{StreamingPreferences.controllerKbmGyroEnabled=checked;StreamingPreferences.commitControllerKbmSettings()} }
                                 CheckBox { text:qsTr("Only active while an activation button is held"); checked:StreamingPreferences.controllerKbmGyroHoldMode; onToggled:{StreamingPreferences.controllerKbmGyroHoldMode=checked;StreamingPreferences.commitControllerKbmSettings()} }
+                                Label { text:qsTr("Overall sensitivity (%)") }
+                                RowLayout {Layout.fillWidth:true;Slider{Layout.fillWidth:true;from:10;to:500;stepSize:5;value:StreamingPreferences.controllerKbmGyroSensitivity;onMoved:{StreamingPreferences.controllerKbmGyroSensitivity=Math.round(value);StreamingPreferences.commitControllerKbmSettings()}}SpinBox{Layout.preferredWidth:132;Layout.minimumWidth:132;Layout.maximumWidth:132;from:10;to:500;stepSize:5;value:StreamingPreferences.controllerKbmGyroSensitivity;onValueModified:{StreamingPreferences.controllerKbmGyroSensitivity=value;StreamingPreferences.commitControllerKbmSettings()}}}
                                 Label { text:qsTr("Per-axis sensitivity and inversion") }
                                 RowLayout {Layout.fillWidth:true;Label{text:"X";Layout.preferredWidth:18} Slider{Layout.fillWidth:true;Layout.minimumWidth:80;from:10;to:500;stepSize:5;value:StreamingPreferences.controllerKbmGyroXSensitivity;onMoved:{StreamingPreferences.controllerKbmGyroXSensitivity=Math.round(value);StreamingPreferences.commitControllerKbmSettings()}} SpinBox{Layout.preferredWidth:132;Layout.minimumWidth:132;Layout.maximumWidth:132;editable:true;from:10;to:500;stepSize:5;value:StreamingPreferences.controllerKbmGyroXSensitivity;onValueModified:{StreamingPreferences.controllerKbmGyroXSensitivity=value;StreamingPreferences.commitControllerKbmSettings()}} CheckBox{text:qsTr("Invert");checked:StreamingPreferences.controllerKbmGyroXInverted;onToggled:{StreamingPreferences.controllerKbmGyroXInverted=checked;StreamingPreferences.commitControllerKbmSettings()}}}
                                 RowLayout {Layout.fillWidth:true;Label{text:"Y";Layout.preferredWidth:18} Slider{Layout.fillWidth:true;Layout.minimumWidth:80;from:10;to:500;stepSize:5;value:StreamingPreferences.controllerKbmGyroYSensitivity;onMoved:{StreamingPreferences.controllerKbmGyroYSensitivity=Math.round(value);StreamingPreferences.commitControllerKbmSettings()}} SpinBox{Layout.preferredWidth:132;Layout.minimumWidth:132;Layout.maximumWidth:132;editable:true;from:10;to:500;stepSize:5;value:StreamingPreferences.controllerKbmGyroYSensitivity;onValueModified:{StreamingPreferences.controllerKbmGyroYSensitivity=value;StreamingPreferences.commitControllerKbmSettings()}} CheckBox{text:qsTr("Invert");checked:StreamingPreferences.controllerKbmGyroYInverted;onToggled:{StreamingPreferences.controllerKbmGyroYInverted=checked;StreamingPreferences.commitControllerKbmSettings()}}}
@@ -191,8 +193,15 @@ Window {
                                     Label { Layout.fillWidth:true; text:qsTr("Gyro mouse stays active while any selected button is held. Selected buttons keep their normal assigned action."); wrapMode:Text.Wrap; color:"#bbb" }
                                     RowLayout { Layout.fillWidth:true
                                         Label { Layout.fillWidth:true; text:root.shortcutDescription(StreamingPreferences.controllerKbmGyroActivationButtons, ", "); wrapMode:Text.Wrap }
-                                        Button { text:qsTr("Configure"); onClicked:gyroActivationPopup.openForCurrent() }
+                                        Button { text:qsTr("Configure"); onClicked:gyroActivationPopup.openForCurrent("activation") }
                                     }
+                                }
+                                CheckBox { text:qsTr("Precision aim while a selected button is held"); checked:StreamingPreferences.controllerKbmGyroPrecisionEnabled; onToggled:{StreamingPreferences.controllerKbmGyroPrecisionEnabled=checked;StreamingPreferences.commitControllerKbmSettings()} }
+                                ColumnLayout { Layout.fillWidth:true; enabled:StreamingPreferences.controllerKbmGyroPrecisionEnabled; opacity:enabled?1:0.45
+                                    Label { text:qsTr("Precision sensitivity (% of normal)") }
+                                    RowLayout {Layout.fillWidth:true;Slider{Layout.fillWidth:true;from:10;to:100;stepSize:5;value:StreamingPreferences.controllerKbmGyroPrecisionSensitivity;onMoved:{StreamingPreferences.controllerKbmGyroPrecisionSensitivity=Math.round(value);StreamingPreferences.commitControllerKbmSettings()}}SpinBox{Layout.preferredWidth:132;Layout.minimumWidth:132;Layout.maximumWidth:132;from:10;to:100;stepSize:5;value:StreamingPreferences.controllerKbmGyroPrecisionSensitivity;onValueModified:{StreamingPreferences.controllerKbmGyroPrecisionSensitivity=value;StreamingPreferences.commitControllerKbmSettings()}}}
+                                    Label { text:qsTr("Precision activation buttons"); font.bold:true }
+                                    RowLayout { Layout.fillWidth:true;Label{Layout.fillWidth:true;text:root.shortcutDescription(StreamingPreferences.controllerKbmGyroPrecisionButtons,", ");wrapMode:Text.Wrap}Button{text:qsTr("Configure");onClicked:gyroActivationPopup.openForCurrent("precision")} }
                                 }
                                 Rectangle { Layout.fillWidth: true; height:1; color:"#555" }
                                 Label { text: qsTr("Left trigger"); font.pixelSize: 18; font.bold: true }
@@ -367,19 +376,19 @@ Window {
     }
     Popup {
         id:gyroActivationPopup;modal:true;dim:true;focus:true;width:620;height:420;x:(root.width-width)/2;y:(root.height-height)/2;closePolicy:Popup.CloseOnEscape
-        property string selection:""
-        function openForCurrent(){selection=StreamingPreferences.controllerKbmGyroActivationButtons;open()}
+        property string selection:"";property string targetMode:"activation"
+        function openForCurrent(mode){targetMode=mode||"activation";selection=targetMode==="precision"?StreamingPreferences.controllerKbmGyroPrecisionButtons:StreamingPreferences.controllerKbmGyroActivationButtons;open()}
         function selected(i){return selection.split(",").indexOf(String(i))>=0}
         function toggle(i,on){var a=selection.length?selection.split(","):[];var s=String(i);var p=a.indexOf(s);if(on&&p<0)a.push(s);if(!on&&p>=0)a.splice(p,1);selection=a.join(",")}
         Overlay.modal:Rectangle{color:"#99000000"} background:Rectangle{radius:14;color:"#303030";border.color:"#555"}
         contentItem:ColumnLayout{
-            RowLayout{Layout.fillWidth:true;Label{text:qsTr("Gyro activation buttons");font.pixelSize:20;font.bold:true;Layout.fillWidth:true}Button{text:"✕";flat:true;onClicked:gyroActivationPopup.close()}}
-            Label{Layout.fillWidth:true;text:qsTr("Holding any one of the selected buttons activates gyro mouse. The buttons continue performing their normal actions.");wrapMode:Text.Wrap;color:"#bbb"}
+            RowLayout{Layout.fillWidth:true;Label{text:gyroActivationPopup.targetMode==="precision"?qsTr("Precision aim buttons"):qsTr("Gyro activation buttons");font.pixelSize:20;font.bold:true;Layout.fillWidth:true}Button{text:"✕";flat:true;onClicked:gyroActivationPopup.close()}}
+            Label{Layout.fillWidth:true;text:gyroActivationPopup.targetMode==="precision"?qsTr("Holding any one of the selected buttons applies precision sensitivity. Normal actions are still forwarded."):qsTr("Holding any one of the selected buttons activates gyro mouse. The buttons continue performing their normal actions.");wrapMode:Text.Wrap;color:"#bbb"}
             GridLayout{columns:3;Layout.fillWidth:true
                 Repeater{model:[{i:0,n:"A / Cross"},{i:1,n:"B / Circle"},{i:2,n:"X / Square"},{i:3,n:"Y / Triangle"},{i:4,n:"Back / Share"},{i:5,n:"Guide / PS"},{i:6,n:"Start / Options"},{i:7,n:"L3"},{i:8,n:"R3"},{i:9,n:"LB"},{i:10,n:"RB"},{i:15,n:"Mute"},{i:20,n:"Touchpad"},{i:100,n:"Left Trigger"},{i:101,n:"Right Trigger"}];delegate:CheckBox{text:modelData.n;checked:gyroActivationPopup.selected(modelData.i);onToggled:gyroActivationPopup.toggle(modelData.i,checked)}}
             }
             Item{Layout.fillHeight:true}
-            RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:gyroActivationPopup.close()}Button{text:qsTr("Apply");enabled:gyroActivationPopup.selection.length>0;onClicked:{StreamingPreferences.controllerKbmGyroActivationButtons=gyroActivationPopup.selection;StreamingPreferences.commitControllerKbmSettings();gyroActivationPopup.close()}}}
+            RowLayout{Layout.alignment:Qt.AlignRight;Button{text:qsTr("Cancel");onClicked:gyroActivationPopup.close()}Button{text:qsTr("Apply");enabled:gyroActivationPopup.selection.length>0;onClicked:{if(gyroActivationPopup.targetMode==="precision")StreamingPreferences.controllerKbmGyroPrecisionButtons=gyroActivationPopup.selection;else StreamingPreferences.controllerKbmGyroActivationButtons=gyroActivationPopup.selection;StreamingPreferences.commitControllerKbmSettings();gyroActivationPopup.close()}}}
         }
     }
     Popup {

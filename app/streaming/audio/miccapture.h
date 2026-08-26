@@ -6,12 +6,11 @@
  * Logan's architecture (logabell/moonlight-qt-mic):
  *
  *   audioCallback   (RT thread)  : ONLY try-catch + delegate to handleAudioData
- *   handleAudioData (RT thread)  : std::mutex + insert samples + 12-frame cap + notify
- *   encoderLoop     (normal thread): wait + drain frame + sleep_until pacer + encode + send
+ *   handleAudioData (RT thread)  : std::mutex + insert samples + bounded queue + notify
+ *   encoderLoop     (normal thread): wait + drain latest frame + encode + send
  *
  * std::mutex in handleAudioData IS safe -- PipeWire only forbids SDL calls
  * and sleep in the RT callback, not mutex locks.
- * sleep_until in encoderLoop is safe -- it is a normal std::thread.
  */
 
 #include <SDL.h>

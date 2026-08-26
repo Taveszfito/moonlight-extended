@@ -35,6 +35,10 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_ControllerKbmGyroHoldActive(false),
       m_ControllerKbmGyroActivationMask(0),
       m_ControllerKbmGyroActivationTriggers{false, false},
+      m_ControllerKbmGyroPrecisionEnabled(prefs.controllerKbmGyroPrecisionEnabled),
+      m_ControllerKbmGyroPrecisionSensitivity(prefs.controllerKbmGyroPrecisionSensitivity),
+      m_ControllerKbmGyroPrecisionMask(0),
+      m_ControllerKbmGyroPrecisionTriggers{false, false},
       m_ControllerKbmGyroSensitivity(prefs.controllerKbmGyroSensitivity),
       m_ControllerKbmGyroAxisSensitivity{prefs.controllerKbmGyroXSensitivity, prefs.controllerKbmGyroYSensitivity, prefs.controllerKbmGyroZSensitivity},
       m_ControllerKbmGyroAxisInverted{prefs.controllerKbmGyroXInverted, prefs.controllerKbmGyroYInverted, prefs.controllerKbmGyroZInverted},
@@ -89,6 +93,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     for (const QString& button : prefs.gyroStickShortcut.split(',', Qt::SkipEmptyParts)) { bool ok=false; int index=button.toInt(&ok); if(ok&&index>=0&&index<32)m_GyroStickShortcutMask|=(1u<<index); }
     auto parseGyroButtons=[](const QString& value,uint32_t& mask,bool triggers[2]){for(const QString& button:value.split(',',Qt::SkipEmptyParts)){bool ok=false;int index=button.toInt(&ok);if(!ok)continue;if(index>=0&&index<32)mask|=(1u<<index);else if(index==100)triggers[0]=true;else if(index==101)triggers[1]=true;}};
     parseGyroButtons(prefs.gyroStickActivationButtons,m_GyroStickActivationMask,m_GyroStickActivationTriggers);parseGyroButtons(prefs.gyroStickPrecisionButtons,m_GyroStickPrecisionMask,m_GyroStickPrecisionTriggers);
+    parseGyroButtons(prefs.controllerKbmGyroActivationButtons,m_ControllerKbmGyroActivationMask,m_ControllerKbmGyroActivationTriggers);
+    parseGyroButtons(prefs.controllerKbmGyroPrecisionButtons,m_ControllerKbmGyroPrecisionMask,m_ControllerKbmGyroPrecisionTriggers);
     m_ControllerKbmTriggerThresholds[0] = prefs.controllerKbmLeftTriggerThreshold;
     m_ControllerKbmTriggerThresholds[1] = prefs.controllerKbmRightTriggerThreshold;
     m_ControllerKbmTriggerBehaviors[0] = prefs.controllerKbmLeftTriggerBehavior;

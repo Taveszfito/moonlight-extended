@@ -240,6 +240,9 @@ public:
     Q_PROPERTY(QString controllerKbmGyroShortcut MEMBER controllerKbmGyroShortcut NOTIFY controllerKbmSettingsChanged)
     Q_PROPERTY(bool controllerKbmGyroHoldMode MEMBER controllerKbmGyroHoldMode NOTIFY controllerKbmSettingsChanged)
     Q_PROPERTY(QString controllerKbmGyroActivationButtons MEMBER controllerKbmGyroActivationButtons NOTIFY controllerKbmSettingsChanged)
+    Q_PROPERTY(bool controllerKbmGyroPrecisionEnabled MEMBER controllerKbmGyroPrecisionEnabled NOTIFY controllerKbmSettingsChanged)
+    Q_PROPERTY(int controllerKbmGyroPrecisionSensitivity MEMBER controllerKbmGyroPrecisionSensitivity NOTIFY controllerKbmSettingsChanged)
+    Q_PROPERTY(QString controllerKbmGyroPrecisionButtons MEMBER controllerKbmGyroPrecisionButtons NOTIFY controllerKbmSettingsChanged)
     Q_PROPERTY(int dualSenseControllerVolume MEMBER dualSenseControllerVolume NOTIFY controllerKbmSettingsChanged)
     Q_PROPERTY(bool triggerOverrideEnabled MEMBER triggerOverrideEnabled NOTIFY controllerKbmSettingsChanged)
     Q_PROPERTY(int leftTriggerOverrideThreshold MEMBER leftTriggerOverrideThreshold NOTIFY controllerKbmSettingsChanged)
@@ -344,6 +347,9 @@ public:
     QString controllerKbmGyroShortcut;
     bool controllerKbmGyroHoldMode;
     QString controllerKbmGyroActivationButtons;
+    bool controllerKbmGyroPrecisionEnabled;
+    int controllerKbmGyroPrecisionSensitivity;
+    QString controllerKbmGyroPrecisionButtons;
     int dualSenseControllerVolume;
     bool triggerOverrideEnabled;
     int leftTriggerOverrideThreshold, rightTriggerOverrideThreshold;

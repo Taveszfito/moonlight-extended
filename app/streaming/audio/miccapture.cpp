@@ -3,11 +3,11 @@
  *
  * Threading model:
  *   audioCallback   (RT thread)  : try-catch + delegate to handleAudioData ONLY
- *   handleAudioData (RT thread)  : std::mutex + insert + 12-frame cap + notify_one
- *   encoderLoop     (normal thread): wait + drain + sleep_until pacer + encode + send
+ *   handleAudioData (RT thread)  : std::mutex + insert + bounded queue + notify_one
+ *   encoderLoop     (normal thread): wait + drain + encode + send
  *
- * Root cause of SIGABRT on Steam Deck: sleep_until was in SDL callback or
- * handleAudioData (RT thread). Must be in encoderLoop (normal std::thread).
+ * Root cause of SIGABRT on Steam Deck: blocking work was performed in the SDL
+ * callback. Capture stays minimal here; encoding and transport use a worker.
  * std::mutex in handleAudioData IS safe -- PipeWire only forbids SDL calls
  * and sleep in the RT callback.
  */
@@ -457,7 +457,10 @@ void SDLCALL MicCapture::bluetoothMicrophoneCallback(void* userdata,
     std::copy_n(opus, packet.size(), packet.begin());
     {
         std::lock_guard<std::mutex> lock(capture->m_BufferMutex);
-        if (capture->m_BluetoothPackets.size() >= 12) {
+        // The controller already produces these packets at their native 10 ms
+        // cadence. Keep only a small jitter allowance; retaining an extended
+        // backlog here turns a temporary send stall into audible mic latency.
+        if (capture->m_BluetoothPackets.size() >= 4) {
             capture->m_BluetoothPackets.pop_front();
         }
         capture->m_BluetoothPackets.push_back(packet);
@@ -482,7 +485,7 @@ void SDLCALL MicCapture::audioCallback(void* userdata, Uint8* stream, int len)
 
 // ---------------------------------------------------------------------------
 // handleAudioData -- called from RT thread
-// Only: mutex + insert + 12-frame cap + notify
+// Only: mutex + insert + bounded queue + notify
 // std::mutex IS safe here -- PipeWire only forbids SDL calls and sleep
 // ---------------------------------------------------------------------------
 
@@ -503,7 +506,9 @@ void MicCapture::handleAudioData(const Uint8* stream, int len)
     } else {
         m_SampleBuffer.insert(m_SampleBuffer.end(), samples, samples + raw_count);
     }
-    constexpr size_t maxSamples = kFrameSize * kChannels * 12;
+    // SDL supplies the pacing. Three frames leave enough room for callback
+    // jitter without allowing old speech to accumulate for hundreds of ms.
+    constexpr size_t maxSamples = kFrameSize * kChannels * 3;
     if (m_SampleBuffer.size() > maxSamples) {
         auto trim = m_SampleBuffer.size() - maxSamples;
         m_SampleBuffer.erase(m_SampleBuffer.begin(),
@@ -514,8 +519,8 @@ void MicCapture::handleAudioData(const Uint8* stream, int len)
 
 // ---------------------------------------------------------------------------
 // encoderLoop -- normal priority thread
-// All encoding / sending / sleeping live here.
-// sleep_until is SAFE here (normal std::thread, not RT callback).
+// All encoding and sending live here. SDL capture already provides the frame
+// cadence, so adding a second pacer only preserves backlog after a late send.
 // ---------------------------------------------------------------------------
 
 void MicCapture::encoderLoop()
@@ -534,11 +539,6 @@ void MicCapture::encoderLoop()
 
     const int kFrameElements = kFrameSize * kChannels;
     std::vector<opus_int16> frame((size_t)kFrameElements);
-    const auto frameDuration =
-        std::chrono::milliseconds((kFrameSize * 1000) / kSampleRate);
-    auto nextSendDeadline = std::chrono::steady_clock::now();
-    bool pacingActive = false;
-
     uint32_t packetsSent = 0;
     uint32_t packetsDropped = 0;
     uint32_t encodeErrors = 0;
@@ -554,8 +554,17 @@ void MicCapture::encoderLoop()
             if (m_StopEncoderThread.load(std::memory_order_acquire)) break;
             if (!m_Streaming.load(std::memory_order_acquire) ||
                 (int)m_SampleBuffer.size() < kFrameElements) {
-                pacingActive = false;
                 continue;
+            }
+            // If transport briefly stalled, discard complete stale frames and
+            // send the newest full frame. This bounds latency and avoids a
+            // catch-up burst on the reliable control channel.
+            if (m_SampleBuffer.size() >= static_cast<size_t>(kFrameElements * 2)) {
+                const size_t staleElements =
+                    ((m_SampleBuffer.size() - kFrameElements) / kFrameElements) * kFrameElements;
+                m_SampleBuffer.erase(m_SampleBuffer.begin(),
+                                     m_SampleBuffer.begin() + static_cast<std::ptrdiff_t>(staleElements));
+                packetsDropped += static_cast<uint32_t>(staleElements / kFrameElements);
             }
             std::copy_n(m_SampleBuffer.begin(), kFrameElements, frame.begin());
             m_SampleBuffer.erase(m_SampleBuffer.begin(),
@@ -568,21 +577,6 @@ void MicCapture::encoderLoop()
                 sample = static_cast<opus_int16>(std::clamp(amplified, -32768, 32767));
             }
         }
-
-        // Pacer -- SAFE: encoderLoop is a normal std::thread, not RT callback
-        const auto now = std::chrono::steady_clock::now();
-        if (!pacingActive) {
-            nextSendDeadline = now;
-            pacingActive = true;
-        } else if (now > nextSendDeadline + (frameDuration * 2)) {
-            nextSendDeadline = now; // re-sync after gap
-            SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION,
-                         "[mic] pacer re-sync at seq=%u (gap detected)", (unsigned)m_MicSeq);
-        }
-        if (nextSendDeadline > now) {
-            std::this_thread::sleep_until(nextSendDeadline);
-        }
-        nextSendDeadline += frameDuration;
 
         if (isMuted()) {
             continue;
