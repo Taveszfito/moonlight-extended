@@ -28,6 +28,25 @@ Currently supported features include:
 
 ---
 
+## 🛠️ In-Stream Tools and Extended Controls
+
+Moonlight Extended includes an in-stream popup menu that provides quick access to useful client and controller features without interrupting the active streaming session.
+
+Available tools include:
+
+* Uploading clipboard content from the client to the host
+* Fetching clipboard content from the host to the client
+* Viewing connected-controller information, including connection and battery status
+* Using a controller to emulate keyboard and mouse input
+* Mapping controller motion to the right analog stick with configurable gyro sensitivity and behavior
+* Accessing additional Extended controller and session actions directly during streaming
+
+These controls are designed for controller-first remote play, allowing common input, clipboard, and session operations to be performed without switching away from the streamed application.
+
+> **Apollo Extended required:** Bidirectional clipboard transfer and Extended controller actions require a compatible [Apollo Extended](https://github.com/Taveszfito/Apollo-Extended) host. Client-only popup and input features remain available with standard hosts where applicable.
+
+---
+
 ## 🎙️ Microphone Forwarding
 
 Moonlight Extended adds client-to-host microphone forwarding, allowing voice chat and other microphone input to be used during a remote streaming session.
@@ -39,6 +58,20 @@ Microphone transmission can be muted directly on the client, preventing micropho
 Microphone forwarding uses the **Steam Streaming audio drivers** as its backend, so **Steam must be installed on the host PC** for microphone forwarding to work.
 
 > **Apollo Extended required:** Microphone forwarding is an Extended protocol feature and requires a compatible [Apollo Extended](https://github.com/Taveszfito/Apollo-Extended) host. Standard Sunshine and Apollo hosts do not support microphone forwarding.
+
+---
+
+## 🚧 Upcoming Features
+
+Planned client-side features currently under consideration include:
+
+* A controller macro system for remapping, button combinations, timed sequences, hold and toggle actions, turbo, and client commands, with support for per-game profiles and DualSense Edge rear buttons
+* A controller-driven radial dial for quickly selecting macros, keyboard and mouse actions, client commands, and profiles with an analog stick during streaming
+* An input recorder for creating macros automatically from controller actions, starting from the first input and trimming the recording after the final event
+* A customizable client-side crosshair overlay with multiple styles, colors, sizing, opacity, outline, and position controls
+* Temporary center-focused stream zoom that can be activated by controller inputs or macros in hold, toggle, or timed modes, with configurable magnification and optional crosshair integration
+
+These features are planned for future development and may change as their design and implementation evolve.
 
 ---
 
